@@ -101,33 +101,36 @@ jbyteArray JNICALL Java_android_smartcard_terminals_ASSDTerminal_Transmit
     int commandLength = env->GetArrayLength(jcommand);
     jbyte* command = env->GetByteArrayElements(jcommand, NULL);
 
-    if (fd < 0)
+    if (command == NULL)
         return NULL;
-    if ((command == NULL) || (commandLength < 1) || (commandLength > 510))
-        return NULL;
+    if ((fd < 0) || (commandLength < 1) || (commandLength > 510))
+        goto clean_and_return;
 
     buf = (uint8_t*)malloc(512);
     if (buf == NULL)
-        return NULL;
+        goto clean_and_return;
 
     buf[0] = ((commandLength + 2) >> 8) & 0xff;
     buf[1] = (commandLength + 2) & 0xff;
     memcpy(&buf[2], command, commandLength);
 
     if (ioctl(fd, ASSD_IOC_TRANSCEIVE, buf))
-        goto end;
+        goto clean_and_return;
 
     resultLength = ((buf[0] << 8) | buf[1]) - 2;
     if ((resultLength < 1) || (resultLength > 510))
-        goto end;
+        goto clean_and_return;
 
     result = env->NewByteArray(resultLength);
     if (result == NULL)
-        goto end;
+        goto clean_and_return;
 
     env->SetByteArrayRegion(result, 0, resultLength, (jbyte*)&buf[2]);
 
-end:
-    free(buf);
+clean_and_return:
+    if (buf != NULL)
+        free(buf);
+
+    env->ReleaseByteArrayElements(jcommand, command, JNI_ABORT);
     return result;
 }

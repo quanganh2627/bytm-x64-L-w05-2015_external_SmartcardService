@@ -10,10 +10,6 @@ LOCAL_SRC_FILES += \
 LOCAL_MODULE:= android.smartcardapi
 LOCAL_MODULE_TAGS := optional
 
-LOCAL_JAVA_LIBRARIES := android.smartcardapi \
-
-
-
 PRODUCT_COPY_FILES += external/SmartcardService/smartcardapi/android.smartcardapi.xml:system/etc/permissions/android.smartcardapi.xml
 
 include $(BUILD_JAVA_LIBRARY)

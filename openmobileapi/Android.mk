@@ -10,10 +10,6 @@ LOCAL_SRC_FILES += \
 LOCAL_MODULE:= org.simalliance.openmobileapi
 LOCAL_MODULE_TAGS := optional
 
-LOCAL_JAVA_LIBRARIES := org.simalliance.openmobileapi \
-
-
-
 PRODUCT_COPY_FILES += external/SmartcardService/openmobileapi/org.simalliance.openmobileapi.xml:system/etc/permissions/org.simalliance.openmobileapi.xml
 
 include $(BUILD_JAVA_LIBRARY)
