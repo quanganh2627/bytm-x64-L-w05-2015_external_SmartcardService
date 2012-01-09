@@ -131,6 +131,8 @@ public class UiccTerminal extends Terminal {
 
 		byte[] manageChannelCommand = new byte[] { 0x00, 0x70, 0x00, 0x00, 0x01 };
 		byte[] rsp = transmit(manageChannelCommand, 2, 0x9000, 0, "MANAGE CHANNEL");
+		if (rsp.length == 2 && ((rsp[0] == (byte)0x6D || rsp[0] == (byte)0x6E) && rsp[1] == (byte)0x00))
+			throw new NoSuchElementException("logical channels not supported");
 		if ((rsp.length == 2) && ((rsp[0] == (byte)0x68) && (rsp[1] == (byte)0x81)))
 			throw new NoSuchElementException("logical channels not supported");
 		if (rsp.length == 2 && (rsp[0] == (byte)0x6A && rsp[1] == (byte)0x81))
@@ -151,6 +153,9 @@ public class UiccTerminal extends Terminal {
 
 		byte[] manageChannelCommand = new byte[] { 0x00, 0x70, 0x00, 0x00, 0x01 };
 		byte[] rsp = transmit(manageChannelCommand, 2, 0x9000, 0, "MANAGE CHANNEL");
+
+		if (rsp.length == 2 && ((rsp[0] == (byte)0x6D || rsp[0] == (byte)0x6E) && rsp[1] == (byte)0x00))
+			throw new NoSuchElementException("logical channels not supported");
 
 		if ((rsp.length == 2) && ((rsp[0] == (byte)0x68) && (rsp[1] == (byte)0x81)))
 			throw new NoSuchElementException("logical channels not supported");
