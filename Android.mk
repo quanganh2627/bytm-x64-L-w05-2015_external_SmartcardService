@@ -3,9 +3,10 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(call all-java-files-under, src)
 LOCAL_SRC_FILES += \
-      openmobileapi/src/android/smartcard/ISmartcardServiceCallback.aidl \
-      openmobileapi/src/android/smartcard/ISmartcardService.aidl
+      openmobileapi/src/org/simalliance/openmobileapi/service/ISmartcardServiceCallback.aidl \
+      openmobileapi/src/org/simalliance/openmobileapi/service/ISmartcardService.aidl
 
+LOCAL_AIDL_INCLUDES := external/SmartcardService/openmobileapi/src/org/simalliance/openmobileapi/service
 
 LOCAL_PACKAGE_NAME := SmartcardService
 LOCAL_CERTIFICATE := platform

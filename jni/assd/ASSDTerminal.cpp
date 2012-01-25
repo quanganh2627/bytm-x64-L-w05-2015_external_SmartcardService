@@ -22,7 +22,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 
-#include <utils/Log.h>
+// #include <utils/Log.h>
 
 #define LOG_TAG "libassd"
 
@@ -37,8 +37,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
  * Method:    Close
  * Signature: (I)V
  */
-JNIEXPORT void JNICALL Java_android_smartcard_terminals_ASSDTerminal_Close
-(JNIEnv *env, jclass cla) {
+JNIEXPORT void JNICALL Java_org_simalliance_openmobileapi_service_terminals_ASSDTerminal_Close
+(JNIEnv *env, jobject obj) {
     if (fd >= 0)
         close(fd);
     fd = -1;
@@ -49,8 +49,8 @@ JNIEXPORT void JNICALL Java_android_smartcard_terminals_ASSDTerminal_Close
  * Method:    Open
  * Signature: (I)I
  */
-JNIEXPORT jboolean JNICALL Java_android_smartcard_terminals_ASSDTerminal_Open
-(JNIEnv *env, jclass cla) {
+JNIEXPORT jboolean JNICALL Java_org_simalliance_openmobileapi_service_terminals_ASSDTerminal_Open
+(JNIEnv *env, jobject obj) {
     if (fd >= 0)
         return false;
 
@@ -68,8 +68,8 @@ JNIEXPORT jboolean JNICALL Java_android_smartcard_terminals_ASSDTerminal_Open
 }
 
 JNIEXPORT
-jboolean JNICALL Java_android_smartcard_terminals_ASSDTerminal_IsPresent
-(JNIEnv *env, jclass cla) {
+jboolean JNICALL Java_org_simalliance_openmobileapi_service_terminals_ASSDTerminal_IsPresent
+(JNIEnv *env, jobject obj) {
     int result;
     int f = fd;
     if (fd < 0)
@@ -93,8 +93,8 @@ jboolean JNICALL Java_android_smartcard_terminals_ASSDTerminal_IsPresent
  * Signature: (I[B)[B
  */
 JNIEXPORT
-jbyteArray JNICALL Java_android_smartcard_terminals_ASSDTerminal_Transmit
-(JNIEnv *env, jclass cla, jbyteArray jcommand) {
+jbyteArray JNICALL Java_org_simalliance_openmobileapi_service_terminals_ASSDTerminal_Transmit
+(JNIEnv *env, jobject obj, jbyteArray jcommand) {
     uint8_t* buf = NULL;
     int resultLength;
     jbyteArray result = NULL;
