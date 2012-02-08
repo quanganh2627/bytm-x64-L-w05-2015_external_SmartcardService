@@ -199,7 +199,7 @@ public class SEService {
      */
     public void shutdown() {
         synchronized (mConnection) {
-            if (mSmartcardService != null) {
+            if (mSmartcardService != null && mReaders != null) {
                 synchronized (mReaders) {
 
                     for (Reader reader : mReaders) {
@@ -300,16 +300,16 @@ public class SEService {
             throw new IOException(e.getMessage());
         }
         if (basicChannelInUse(error)) {
-		return null;
+            return null;
         }
         if (channelCannotBeEstablished(error)) {
             return null;
         }
         if(aid == null || aid.length == 0)
         {
-	        if (!isDefaultApplicationSelected(error)) {
-	            return null;
-	        }
+            if (!isDefaultApplicationSelected(error)) {
+                return null;
+            }
         }
         checkIfAppletAvailable(error);
         checkForException(error);
@@ -441,7 +441,7 @@ public class SEService {
 
     byte[] getSelectResponse(Channel channel)  {
 
-	if (mSmartcardService == null) {
+        if (mSmartcardService == null) {
             throw new IllegalStateException("service not connected to system");
         }
         if (channel == null) {
@@ -535,12 +535,12 @@ public class SEService {
         return false;
     }
 
-    private void checkIfAppletAvailable(SmartcardError error) throws IOException {
+    private void checkIfAppletAvailable(SmartcardError error) throws NoSuchElementException {
         Exception exp = error.createException();
         if (exp != null) {
-		if(exp instanceof NoSuchElementException) {
-			throw new IOException("Applet with the defined aid does not exist in the SE");
-		}
+            if(exp instanceof NoSuchElementException) {
+                throw new NoSuchElementException("Applet with the defined aid does not exist in the SE");
+            }
         }
     }
 

@@ -13,7 +13,7 @@ LOCAL_CERTIFICATE := platform
 
 LOCAL_JAVA_LIBRARIES := core framework
 
-LOCAL_PROGUARD_FLAGS := -include $(LOCAL_PATH)/proguard.flags
+LOCAL_PROGUARD_ENABLED := disabled
 
 include $(BUILD_PACKAGE)
 

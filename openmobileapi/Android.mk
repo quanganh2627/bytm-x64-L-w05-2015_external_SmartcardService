@@ -2,6 +2,18 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
+LOCAL_MODULE := org.simalliance.openmobileapi.xml
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/permissions
+LOCAL_SRC_FILES := $(LOCAL_MODULE)
+
+include $(BUILD_PREBUILT)
+
+
+
+include $(CLEAR_VARS)
+
 LOCAL_SRC_FILES := $(call all-java-files-under, src)
 LOCAL_SRC_FILES += \
       src/org/simalliance/openmobileapi/service/ISmartcardServiceCallback.aidl \
@@ -11,8 +23,6 @@ LOCAL_AIDL_INCLUDES := external/SmartcardService/openmobileapi/src/org/simallian
 
 LOCAL_MODULE:= org.simalliance.openmobileapi
 LOCAL_MODULE_TAGS := optional
-
-PRODUCT_COPY_FILES += external/SmartcardService/openmobileapi/org.simalliance.openmobileapi.xml:system/etc/permissions/org.simalliance.openmobileapi.xml
 
 include $(BUILD_JAVA_LIBRARY)
 

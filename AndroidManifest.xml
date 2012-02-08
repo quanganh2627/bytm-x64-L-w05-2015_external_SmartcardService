@@ -2,8 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
       package="org.simalliance.openmobileapi.service"
       android:sharedUserId="org.simalliance.uid.openmobileapi"
-      android:versionCode="0"
-      android:versionName="2.3.1">
+      android:versionCode="2"
+      android:versionName="2.3.2">
 
     <permission android:label="SmartcardServicePermission label"
 			android:protectionLevel="dangerous"

@@ -71,17 +71,19 @@ public class Session {
      * default Applet on the basic channel.
      * <p>
      *
-     * The select response data can be retrieved with byte[] getSelectResponse().
+     * The optional select response data of an applet can be retrieved with byte[] getSelectResponse().
      *
      * @param aid the AID of the Applet to be selected on this channel, as a byte array, or null if no Applet is to be
      * selected.
-     * @throws IOException if there is a communication problem to the reader or the Secure Element (e.g. if the AID is not available).
+     * @throws IOException if there is a communication problem to the reader or the Secure Element (e.g. if the SE is not responding).
      * @throws IllegalStateException if the Secure Element session is used after being closed.
      * @throws IllegalArgumentException if the aid's length is not within 5 to
      *             16 (inclusive).
      * @throws SecurityException if the calling application cannot be granted
      *             access to this AID or the default application on this
      *             session.
+     *
+     * @throws NoSuchElementException if an Applet with the defined AID does not exist in the SE
      *
      * @return an instance of Channel if available or null.
      */
@@ -101,15 +103,15 @@ public class Session {
      * Applet is to be selected on this channel, the default Applet is
      * used. It's up to the Secure Element to choose which logical channel will
      * be used.
-     *
      * <p>
-     *
-     * The select response data can be retrieved with byte[] getSelectResponse().
+     * The optional select response data of an applet can be retrieved with byte[] getSelectResponse().
+     * <p>
+     * A logical channel to an applet can be opened multiple times if the applet implements MultiSelectable.
      *
      * @param aid the AID of the Applet to be selected on this channel, as
      *            a byte array.
-     * @throws IOException if there is a communication problem to the reader or the Secure Element. (e.g. if the AID is
-	 *	not available)
+     * @throws IOException if there is a communication problem to the reader or the Secure Element. (e.g. if the SE is
+     *    not responding)
      * @throws IllegalStateException if the Secure Element is used after being
      *             closed.
      * @throws IllegalArgumentException if the aid's length is not within 5 to
@@ -117,7 +119,7 @@ public class Session {
      * @throws SecurityException if the calling application cannot be granted
      *             access to this AID or the default application on this
      *             session.
-     * @throws NoSuchElementException if an Applet with the defined aid does not exist in the SE.
+     * @throws NoSuchElementException if an Applet with the defined AID does not exist in the SE or a logical channel is already open to a non-multiselectable applet
      *
      * @return an instance of Channel. Null if the Secure Element is unable to
      *         provide a new logical channel.
