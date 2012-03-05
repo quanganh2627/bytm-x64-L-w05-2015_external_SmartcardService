@@ -22,6 +22,7 @@ package org.simalliance.openmobileapi.service.terminals;
 import android.content.Context;
 import org.simalliance.openmobileapi.service.CardException;
 import org.simalliance.openmobileapi.service.Terminal;
+import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
 
@@ -56,6 +57,17 @@ public class UiccTerminal extends Terminal {
             return true;
         }
         return false;
+    }
+
+    @Override
+    public byte[] getAtr() {
+        try {
+            String response = manager.getATR();
+
+            return StringToByteArray(response);
+        } catch (RemoteException ex) {
+            return null;
+        }
     }
 
     @Override
