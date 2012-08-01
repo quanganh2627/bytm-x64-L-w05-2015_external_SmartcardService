@@ -26,7 +26,6 @@ import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
 
-import com.android.internal.telephony.IOEMHook;
 import com.android.internal.telephony.ITelephony;
 import com.android.internal.telephony.TelephonyProperties;
 
@@ -36,7 +35,6 @@ import java.util.NoSuchElementException;
 public class UiccTerminal extends Terminal {
 
     private ITelephony manager = null;
-    private IOEMHook oemManager = null;
 
     private int[] channelId = new int[4];
 
@@ -45,9 +43,7 @@ public class UiccTerminal extends Terminal {
 
         try {
             manager = ITelephony.Stub.asInterface(ServiceManager
-                            .getService(Context.TELEPHONY_SERVICE));
-            oemManager = IOEMHook.Stub.asInterface(ServiceManager
-                            .getService("oemhook"));
+                    .getService(Context.TELEPHONY_SERVICE));
         } catch (Exception ex) {
         }
 
@@ -66,7 +62,7 @@ public class UiccTerminal extends Terminal {
     @Override
     public byte[] getAtr() {
         try {
-            String response = oemManager.getATR();
+            String response = manager.getATR();
 
             return StringToByteArray(response);
         } catch (RemoteException ex) {
@@ -76,8 +72,8 @@ public class UiccTerminal extends Terminal {
 
     @Override
     protected void internalConnect() throws CardException {
-        if (manager == null || oemManager == null) {
-            throw new CardException("Cannot connect to Telephony Service or OEMHook Service");
+        if (manager == null) {
+            throw new CardException("Cannot connect to Telephony Service");
         }
         mIsConnected = true;
     }
