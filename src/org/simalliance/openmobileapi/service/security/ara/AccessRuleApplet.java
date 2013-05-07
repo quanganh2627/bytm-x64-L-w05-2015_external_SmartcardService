@@ -38,7 +38,7 @@ public class AccessRuleApplet {
 
     final private static String ACCESS_RULE_APPLET_TAG = "AccessRuleApplet";
 
-    final private static int _MAX_LEN = 0xF0;
+    final private static int _MAX_LEN = 0x00;
 
     final private static CommandApdu mGetAll = new CommandApdu(0x80, 0xCA, 0xFF, 0x40, _MAX_LEN);
 
