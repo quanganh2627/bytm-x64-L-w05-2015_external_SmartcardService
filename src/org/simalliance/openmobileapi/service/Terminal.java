@@ -20,14 +20,27 @@
 package org.simalliance.openmobileapi.service;
 
 import android.content.Context;
+
 import org.simalliance.openmobileapi.service.ISmartcardServiceCallback;
+import org.simalliance.openmobileapi.service.SmartcardService.SmartcardServiceSession;
+
+import android.os.RemoteException;
 import android.util.Log;
 
+import java.io.IOException;
+import java.security.AccessControlException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Random;
+
+
+import android.content.pm.PackageManager;
+import org.simalliance.openmobileapi.service.security.AccessControlEnforcer;
+import org.simalliance.openmobileapi.service.security.ChannelAccess;
+
 
 /**
  * Smartcard service base class for terminal resources.
@@ -39,9 +52,9 @@ public abstract class Terminal implements ITerminal {
 
     protected Context mContext;
 
-    public static final String TERMINAL_SERVICE_TAG = "TERMINAL";
+    private final Map<Long, IChannel> mChannels = new HashMap<Long, IChannel>();
 
-    protected final Map<Long, IChannel> mChannels = new HashMap<Long, IChannel>();
+    private final Object mLock = new Object();
 
     protected final String mName;
 
@@ -51,7 +64,14 @@ public abstract class Terminal implements ITerminal {
 
     protected boolean mDefaultApplicationSelectedOnBasicChannel = true;
 
+
     /**
+     * Per Terminal there will be one AccessController object.
+     */
+    private AccessControlEnforcer mAccessControlEnforcer;
+
+
+   /**
      * Returns a concatenated response.
      *
      * @param r1 the first part of the response.
@@ -99,29 +119,13 @@ public abstract class Terminal implements ITerminal {
         return commandName + " " + message;
     }
 
-    /**
-     * Returns <code>true</code> if the specified command is a short CASE4 APDU,
-     * <code>false</code> otherwise.
-     *
-     * @param cmd the command APDU to be checked.
-     * @return <code>true</code> if the specified command is a short CASE4 APDU,
-     *         <code>false</code> otherwise.
-     */
-    static boolean isCase4(byte[] cmd) {
-        if (cmd.length < 7) {
-            return false;
-        }
-        int lc = cmd[4] & 0xFF;
-        return (lc + 5 < cmd.length);
-    }
-
     public Terminal(String name, Context context) {
         this.mContext = context;
         this.mName = name;
     }
 
     public void closeChannels() {
-        synchronized (mChannels) {
+        synchronized (mLock) {
             Collection<IChannel> col = mChannels.values();
             IChannel[] channelList = col.toArray(new IChannel[col.size()]);
             for (IChannel channel : channelList) {
@@ -140,7 +144,8 @@ public abstract class Terminal implements ITerminal {
      * @throws CardException if closing the channel failed.
      */
     public void closeChannel(Channel channel) throws CardException {
-        synchronized (mChannels) {
+
+        synchronized (mLock) {
             try {
                 internalCloseLogicalChannel(channel.getChannelNumber());
             } finally {
@@ -155,33 +160,6 @@ public abstract class Terminal implements ITerminal {
         }
     }
 
-    public void closeAllChannels() {
-
-        try {
-            int firstChannelNumber = 1;
-            int lastChannelNumber = 4;
-            boolean tmpConnected = false;
-            if (!mIsConnected) {
-                internalConnect();
-                tmpConnected = true;
-            }
-            Log.v(TERMINAL_SERVICE_TAG, Thread.currentThread().getName() + " " + getName());
-            for (int i = firstChannelNumber; i < lastChannelNumber; i++) {
-                try {
-                    internalCloseLogicalChannel(i);
-                    Log.v(TERMINAL_SERVICE_TAG, Thread.currentThread().getName() + " channel " + i
-                            + " closed");
-                } catch (Exception exp) {
-                }
-            }
-
-            if (tmpConnected) {
-                internalDisconnect();
-            }
-
-        } catch (Exception exp) {
-        }
-    }
 
     /**
      * Creates a channel instance.
@@ -190,8 +168,8 @@ public abstract class Terminal implements ITerminal {
      * @param callback the callback used to detect the death of the client.
      * @return a channel instance.
      */
-    protected Channel createChannel(int channelNumber, ISmartcardServiceCallback callback) {
-        return new Channel(this, channelNumber, callback);
+    protected Channel createChannel(SmartcardServiceSession session, int channelNumber, ISmartcardServiceCallback callback) {
+        return new Channel(session, this, channelNumber, callback);
     }
 
     private IChannel getBasicChannel() {
@@ -204,7 +182,7 @@ public abstract class Terminal implements ITerminal {
     }
 
     public IChannel getChannel(long hChannel) {
-        synchronized (mChannels) {
+        synchronized (mLock) {
             return mChannels.get(hChannel);
         }
     }
@@ -265,7 +243,7 @@ public abstract class Terminal implements ITerminal {
      * The card manager will be selected.
      */
     public void select() {
-	mSelectResponse = null;
+        mSelectResponse = null;
         byte[] selectCommand = new byte[5];
         selectCommand[0] = 0x00;
         selectCommand[1] = (byte) 0xA4;
@@ -273,7 +251,7 @@ public abstract class Terminal implements ITerminal {
         selectCommand[3] = 0x00;
         selectCommand[4] = 0x00;
         try {
-		mSelectResponse = transmit(selectCommand, 2, 0x9000, 0xFFFF, "SELECT");
+            mSelectResponse = transmit(selectCommand, 2, 0x9000, 0xFFFF, "SELECT");
 
         } catch (Exception exp) {
             throw new NoSuchElementException(exp.getMessage());
@@ -309,21 +287,21 @@ public abstract class Terminal implements ITerminal {
         selectCommand[4] = (byte) aid.length;
         System.arraycopy(aid, 0, selectCommand, 5, aid.length);
         try {
-		mSelectResponse = transmit(selectCommand, 2, 0x9000, 0xFFFF, "SELECT");
+            mSelectResponse = transmit(selectCommand, 2, 0x9000, 0xFFFF, "SELECT");
         } catch (Exception exp) {
             throw new NoSuchElementException(exp.getMessage());
         }
     }
 
-    public long openBasicChannel(ISmartcardServiceCallback callback) throws CardException {
+    public Channel openBasicChannel(SmartcardServiceSession session, ISmartcardServiceCallback callback) throws CardException {
         if (callback == null) {
             throw new NullPointerException("callback must not be null");
         }
 
-        synchronized (mChannels) {
-		if(!mDefaultApplicationSelectedOnBasicChannel) {
-			throw new CardException("default application is not selected");
-		}
+        synchronized (mLock) {
+            if(!mDefaultApplicationSelectedOnBasicChannel) {
+                throw new CardException("default application is not selected");
+            }
             if (getBasicChannel() != null) {
                 throw new CardException("basic channel in use");
             }
@@ -331,14 +309,15 @@ public abstract class Terminal implements ITerminal {
                 internalConnect();
             }
 
-            Channel basicChannel = createChannel(0, callback);
+
+            Channel basicChannel = createChannel(session, 0, callback);
             basicChannel.hasSelectedAid(false);
-            long hChannel = registerChannel(basicChannel);
-            return hChannel;
+            registerChannel(basicChannel);
+            return basicChannel;
         }
     }
 
-    public long openBasicChannel(byte[] aid, ISmartcardServiceCallback callback) throws Exception {
+    public Channel openBasicChannel(SmartcardServiceSession session, byte[] aid, ISmartcardServiceCallback callback) throws Exception {
         if (callback == null) {
             throw new NullPointerException("callback must not be null");
         }
@@ -346,7 +325,7 @@ public abstract class Terminal implements ITerminal {
             throw new NullPointerException("aid must not be null");
         }
 
-        synchronized (mChannels) {
+        synchronized (mLock) {
             if (getBasicChannel() != null) {
                 throw new CardException("basic channel in use");
             }
@@ -363,20 +342,21 @@ public abstract class Terminal implements ITerminal {
                 throw e;
             }
 
-            Channel basicChannel = createChannel(0, callback);
+
+            Channel basicChannel = createChannel(session, 0, callback);
             basicChannel.hasSelectedAid(true);
             mDefaultApplicationSelectedOnBasicChannel = false;
-            long hChannel = registerChannel(basicChannel);
-            return hChannel;
+            registerChannel(basicChannel);
+            return basicChannel;
         }
     }
 
-    public long openLogicalChannel(ISmartcardServiceCallback callback) throws Exception {
+    public Channel openLogicalChannel(SmartcardServiceSession session, ISmartcardServiceCallback callback) throws Exception {
         if (callback == null) {
             throw new NullPointerException("callback must not be null");
         }
 
-        synchronized (mChannels) {
+        synchronized (mLock) {
             if (mChannels.isEmpty()) {
                 internalConnect();
             }
@@ -391,14 +371,15 @@ public abstract class Terminal implements ITerminal {
                 throw e;
             }
 
-            Channel logicalChannel = createChannel(channelNumber, callback);
+
+            Channel logicalChannel = createChannel(session, channelNumber, callback);
             logicalChannel.hasSelectedAid(false);
-            long hChannel = registerChannel(logicalChannel);
-            return hChannel;
+            registerChannel(logicalChannel);
+            return logicalChannel;
         }
     }
 
-    public long openLogicalChannel(byte[] aid, ISmartcardServiceCallback callback) throws Exception {
+    public Channel openLogicalChannel(SmartcardServiceSession session, byte[] aid, ISmartcardServiceCallback callback) throws Exception {
         if (callback == null) {
             throw new NullPointerException("callback must not be null");
         }
@@ -406,7 +387,7 @@ public abstract class Terminal implements ITerminal {
             throw new NullPointerException("aid must not be null");
         }
 
-        synchronized (mChannels) {
+        synchronized (mLock) {
             if (mChannels.isEmpty()) {
                 internalConnect();
             }
@@ -414,7 +395,6 @@ public abstract class Terminal implements ITerminal {
             int channelNumber = 0;
             try {
                 channelNumber = internalOpenLogicalChannel(aid);
-
             } catch (Exception e) {
                 if (mIsConnected && mChannels.isEmpty()) {
                     internalDisconnect();
@@ -422,10 +402,11 @@ public abstract class Terminal implements ITerminal {
                 throw e;
             }
 
-            Channel logicalChannel = createChannel(channelNumber, callback);
+
+            Channel logicalChannel = createChannel(session, channelNumber, callback);
             logicalChannel.hasSelectedAid(true);
-            long hChannel = registerChannel(logicalChannel);
-            return hChannel;
+            registerChannel(logicalChannel);
+            return logicalChannel;
         }
     }
 
@@ -448,6 +429,7 @@ public abstract class Terminal implements ITerminal {
 
         if (rsp.length >= 2) {
             int sw1 = rsp[rsp.length - 2] & 0xFF;
+            int sw2 = rsp[rsp.length - 1] & 0xFF;
             if (sw1 == 0x6C) {
                 command[cmd.length - 1] = rsp[rsp.length - 1];
                 rsp = internalTransmit(command);
@@ -457,6 +439,24 @@ public abstract class Terminal implements ITerminal {
                 };
                 byte[] response = new byte[rsp.length - 2];
                 System.arraycopy(rsp, 0, response, 0, rsp.length - 2);
+                while (true) {
+                    getResponseCmd[4] = rsp[rsp.length - 1];
+                    rsp = internalTransmit(getResponseCmd);
+                    if (rsp.length >= 2 && rsp[rsp.length - 2] == 0x61) {
+                        response = appendResponse(response, rsp, rsp.length - 2);
+                    } else {
+                        response = appendResponse(response, rsp, rsp.length);
+                        break;
+                    }
+                }
+                rsp = response;
+            } else if (rsp.length == 2 && sw1 == 0x63 && sw2 == 0x10) {
+                byte[] getResponseCmd = new byte[] {
+                        (byte)(command[0] & 0x03), (byte) 0xC0, 0x00, 0x00, 0x00
+                };
+                byte[] response = new byte[rsp.length - 2];
+                System.arraycopy(rsp, 0, response, 0, rsp.length - 2);
+                rsp[rsp.length - 1] = 0x00;
                 while (true) {
                     getResponseCmd[4] = rsp[rsp.length - 1];
                     rsp = internalTransmit(getResponseCmd);
@@ -514,29 +514,31 @@ public abstract class Terminal implements ITerminal {
     public byte[] transmit(byte[] cmd, int minRspLength, int swExpected, int swMask,
             String commandName) throws CardException {
         byte[] rsp = null;
-        try {
-            rsp = protocolTransmit(cmd);
-        } catch (CardException e) {
-            if (commandName == null) {
-                throw e;
-            } else {
-                throw new CardException(createMessage(commandName, "transmit failed"), e);
+        synchronized (mLock) {
+            try {
+                rsp = protocolTransmit(cmd);
+            } catch (CardException e) {
+                if (commandName == null) {
+                    throw e;
+                } else {
+                    throw new CardException(createMessage(commandName, "transmit failed"), e);
+                }
             }
-        }
-        if (minRspLength > 0) {
-            if (rsp == null || rsp.length < minRspLength) {
-                throw new CardException(createMessage(commandName, "response too small"));
+            if (minRspLength > 0) {
+                if (rsp == null || rsp.length < minRspLength) {
+                    throw new CardException(createMessage(commandName, "response too small"));
+                }
             }
-        }
-        if (swMask != 0) {
-            if (rsp == null || rsp.length < 2) {
-                throw new CardException(createMessage(commandName, "SW1/2 not available"));
-            }
-            int sw1 = rsp[rsp.length - 2] & 0xFF;
-            int sw2 = rsp[rsp.length - 1] & 0xFF;
-            int sw = (sw1 << 8) | sw2;
-            if ((sw & swMask) != (swExpected & swMask)) {
-                throw new CardException(createMessage(commandName, sw));
+            if (swMask != 0) {
+                if (rsp == null || rsp.length < 2) {
+                    throw new CardException(createMessage(commandName, "SW1/2 not available"));
+                }
+                int sw1 = rsp[rsp.length - 2] & 0xFF;
+                int sw2 = rsp[rsp.length - 1] & 0xFF;
+                int sw = (sw1 << 8) | sw2;
+                if ((sw & swMask) != (swExpected & swMask)) {
+                    throw new CardException(createMessage(commandName, sw));
+                }
             }
         }
         return rsp;
@@ -553,7 +555,161 @@ public abstract class Terminal implements ITerminal {
      */
     public byte[] getSelectResponse()
     {
-	return mSelectResponse;
+        return mSelectResponse;
     }
+
+    /**
+     * Exchanges APDU (SELECT, READ/WRITE) to the
+     * given EF by File ID and file path via iccIO.
+     *
+     * The given command is checked and might be rejected.
+     *
+     * @param fileID
+     * @param filePath
+     * @param cmd
+     * @return
+     */
+    public byte[] simIOExchange(int fileID, String filePath, byte[] cmd)
+        throws Exception {
+        throw new Exception("SIM IO error!");
+    }
+
+
+
+    public ChannelAccess setUpChannelAccess(
+            PackageManager packageManager,
+            byte[] aid,
+            String packageName,
+            ISmartcardServiceCallback callback){
+        if( mAccessControlEnforcer == null ){
+            throw new AccessControlException("Access Control Enforcer not properly set up");
+        }
+        mAccessControlEnforcer.setPackageManager(packageManager);
+        return mAccessControlEnforcer.setUpChannelAccess(aid, packageName, callback);
+    }
+
+    public synchronized void initializeAccessControl( boolean loadAtStartup, ISmartcardServiceCallback callback ){
+        if( mAccessControlEnforcer == null ){
+            mAccessControlEnforcer = new AccessControlEnforcer(this);
+        }
+
+        mAccessControlEnforcer.initialize( loadAtStartup, callback );
+    }
+
+    public AccessControlEnforcer getAccessControlEnforcer(){
+        return mAccessControlEnforcer;
+    }
+
+
+    /**
+     * Implementation of the SmartcardService Reader interface according to OMAPI.
+     *
+     * @author
+     */
+    final class SmartcardServiceReader extends ISmartcardServiceReader.Stub {
+
+        protected final SmartcardService mService;
+
+        private final ArrayList<SmartcardServiceSession> mSessions = new ArrayList<SmartcardServiceSession>();
+
+        private final Object mLock = new Object();
+
+        public SmartcardServiceReader( SmartcardService service ){
+            this.mService = service;
+        }
+
+        public byte[] getAtr(){
+            return Terminal.this.getAtr();
+        }
+
+        @Override
+        public String getName(SmartcardError error) throws RemoteException {
+            SmartcardService.clearError(error);
+            return Terminal.this.getName();
+        }
+
+        @Override
+        public boolean isSecureElementPresent(SmartcardError error)
+                throws RemoteException {
+            SmartcardService.clearError(error);
+            try {
+                return Terminal.this.isCardPresent();
+            } catch (Exception e) {
+                SmartcardService.setError(error, e);
+            }
+            return false;
+        }
+
+        @Override
+        public ISmartcardServiceSession openSession(SmartcardError error)
+                throws RemoteException {
+            SmartcardService.clearError(error);
+            try {
+                if (!Terminal.this.isCardPresent()){
+                    SmartcardService.setError(error,new IOException("Secure Element is not presented."));
+                    return null;
+                }
+            } catch (CardException e) {
+                SmartcardService.setError(error,e);
+                return null;
+            }
+
+            synchronized (mLock) {
+                try {
+                    mService.initializeAccessControl(Terminal.this.getName(), null);
+                } catch (Exception e ){
+                    SmartcardService.setError(error,e);
+                }
+                SmartcardServiceSession session = mService.new SmartcardServiceSession(this);
+                mSessions.add(session);
+
+                return session;
+            }
+        }
+
+        @Override
+        public void closeSessions(SmartcardError error) throws RemoteException {
+            SmartcardService.clearError(error);
+            synchronized (mLock) {
+                for (SmartcardServiceSession session : mSessions) {
+                    if (session != null && !session.isClosed()) {
+                        session.closeChannels(error);
+                        session.setClosed();
+                    }
+                }
+                mSessions.clear();
+            }
+        }
+
+        /**
+         * Closes the defined Session and all its allocated resources. <br>
+         * After calling this method the Session can not be used for the
+         * communication with the Secure Element any more.
+         *
+         * @param session the Session that should be closed
+         * @throws RemoteException
+         * @throws CardException
+         * @throws NullPointerException if Session is null
+         */
+        void closeSession(SmartcardServiceSession session) throws RemoteException, CardException {
+            if (session == null) {
+                throw new NullPointerException("session is null");
+            }
+            synchronized (mLock) {
+                if (!session.isClosed()) {
+                    SmartcardError error = new SmartcardError();
+                    session.closeChannels(error);
+                    error.throwException();
+                    session.setClosed();
+                }
+                mSessions.remove(session);
+            }
+        }
+
+        Terminal getTerminal() {
+            return Terminal.this;
+        }
+    }
+
 
 }

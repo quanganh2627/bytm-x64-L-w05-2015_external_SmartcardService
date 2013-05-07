@@ -20,6 +20,7 @@
 package org.simalliance.openmobileapi.service;
 
 import org.simalliance.openmobileapi.service.ISmartcardServiceCallback;
+import org.simalliance.openmobileapi.service.ISmartcardServiceReader;
 import org.simalliance.openmobileapi.service.SmartcardError;
 
 /**
@@ -28,62 +29,19 @@ import org.simalliance.openmobileapi.service.SmartcardError;
 interface ISmartcardService {
 
     /**
-     * Closes the specified connection and frees internal resources.
-     * A logical channel will be closed.
-     */
-    void closeChannel(long hChannel, out SmartcardError error);
-
-    /**
      * Returns the friendly names of available smart card readers.
      */
     String[] getReaders(out SmartcardError error);
 
     /**
-     * Returns true if a card is present in the specified reader.
-     * Returns false if a card is not present in the specified reader.
+     * Returns Smartcard Service reader object to the given name.
      */
-    boolean isCardPresent(String reader, out SmartcardError error);
-
-	/**
-	 * Returns the ATR of the connected card or null if the ATR is not available.
-	 */
-    byte[] getAtr(String reader, out SmartcardError error);
+    ISmartcardServiceReader getReader(String reader, out SmartcardError error);
 
     /**
-     * Opens a connection using the basic channel of the card in the
-     * specified reader and returns a channel handle.
-     * Logical channels cannot be opened with this connection.
-     * Use interface method openLogicalChannel() to open a logical channel.
+     * Checks if the application defined by the package name is allowed to receive
+     * NFC transaction events for the defined AID.
      */
-    long openBasicChannel(String reader, ISmartcardServiceCallback callback, out SmartcardError error);
+    boolean[] isNFCEventAllowed(String reader, in byte[] aid, in String[] packageNames, ISmartcardServiceCallback callback, out SmartcardError error);
 
-    /**
-     * Opens a connection using the basic channel of the card in the
-     * specified reader and returns a channel handle. Selects the specified applet.
-     * Logical channels cannot be opened with this connection.
-     * Selection of other applets with this connection is not supported.
-     * Use interface method openLogicalChannel() to open a logical channel.
-     */
-    long openBasicChannelAid(String reader, in byte[] aid, ISmartcardServiceCallback callback, out SmartcardError error);
-
-    /**
-     * Opens a connection using the next free logical channel of the card in the
-     * specified reader. Selects the specified applet.
-     * Selection of other applets with this connection is not supported.
-     */
-    long openLogicalChannel(String reader, in byte[] aid, ISmartcardServiceCallback callback, out SmartcardError error);
-
-    /**
-     * Transmits the specified command APDU and returns the response APDU.
-     * MANAGE channel commands are not supported.
-     * Selection of applets is not supported in logical channels.
-     */
-    byte[] transmit(long hChannel, in byte[] command, out SmartcardError error);
-
-     /**
-     * Returns the data as received from the application select command inclusively the status word.
-     * The returned byte array contains the data bytes in the following order:
-     * [<first data byte>, ..., <last data byte>, <sw1>, <sw2>]
-     */
-    byte[] getSelectResponse(long hChannel, out SmartcardError error);
 }

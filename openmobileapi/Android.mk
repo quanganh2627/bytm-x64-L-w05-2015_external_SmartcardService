@@ -17,6 +17,9 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(call all-java-files-under, src)
 LOCAL_SRC_FILES += \
       src/org/simalliance/openmobileapi/service/ISmartcardServiceCallback.aidl \
+      src/org/simalliance/openmobileapi/service/ISmartcardServiceReader.aidl \
+      src/org/simalliance/openmobileapi/service/ISmartcardServiceChannel.aidl \
+      src/org/simalliance/openmobileapi/service/ISmartcardServiceSession.aidl \
       src/org/simalliance/openmobileapi/service/ISmartcardService.aidl
 
 LOCAL_AIDL_INCLUDES := external/SmartcardService/openmobileapi/src/org/simalliance/openmobileapi/service

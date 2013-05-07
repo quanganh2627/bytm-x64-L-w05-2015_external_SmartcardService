@@ -18,15 +18,21 @@
  */
 
 package org.simalliance.openmobileapi.service;
-
-
-import org.simalliance.openmobileapi.service.security.ChannelAccess;
-
-
+import android.os.Binder;
 import android.os.IBinder;
 import android.os.RemoteException;
 import org.simalliance.openmobileapi.service.ISmartcardServiceCallback;
+import org.simalliance.openmobileapi.service.SmartcardService.SmartcardServiceSession;
+
 import android.util.Log;
+
+
+import java.security.AccessControlException;
+import java.util.NoSuchElementException;
+
+import org.simalliance.openmobileapi.service.security.AccessControlEnforcer;
+import org.simalliance.openmobileapi.service.security.ChannelAccess;
+
 
 /**
  * Smartcard service base class for channel resources.
@@ -35,8 +41,11 @@ class Channel implements IChannel, IBinder.DeathRecipient {
 
     protected final int mChannelNumber;
 
+    protected boolean mIsClosed;
+
     protected long mHandle;
 
+    protected ISmartcardServiceSession mSession;
     protected Terminal mTerminal;
 
     protected byte[] mSelectResponse;
@@ -45,29 +54,32 @@ class Channel implements IChannel, IBinder.DeathRecipient {
 
 
     protected ChannelAccess mChannelAccess = null;
+    protected int mCallingPid = 0;
 
 
     protected ISmartcardServiceCallback mCallback;
 
     protected boolean mHasSelectedAid = false;
 
-    Channel(Terminal terminal, int channelNumber, ISmartcardServiceCallback callback) {
+    Channel(SmartcardServiceSession session, Terminal terminal, int channelNumber, ISmartcardServiceCallback callback) {
         this.mChannelNumber = channelNumber;
+        this.mSession = session;
         this.mTerminal = terminal;
         this.mCallback = callback;
         this.mBinder = callback.asBinder();
         this.mSelectResponse = terminal.getSelectResponse();
+        this.mIsClosed = false;
         try {
             mBinder.linkToDeath(this, 0);
         } catch (RemoteException e) {
-            Log.e(SmartcardService.SMARTCARD_SERVICE_TAG, "Failed to register client callback");
+            Log.e(SmartcardService._TAG, "Failed to register client callback");
         }
     }
 
     public void binderDied() {
         // Close this channel if the client died.
         try {
-            Log.v(SmartcardService.SMARTCARD_SERVICE_TAG, Thread.currentThread().getName()
+            Log.e(SmartcardService._TAG, Thread.currentThread().getName()
                     + " Client " + mBinder.toString() + " died");
             close();
         } catch (Exception ignore) {
@@ -75,8 +87,36 @@ class Channel implements IChannel, IBinder.DeathRecipient {
     }
 
     public void close() throws CardException {
+
+
+        Terminal terminal = getTerminal();
+        if( terminal == null ){
+            throw new IllegalStateException( "channel is not attached to a terminal");
+        }
+
+        if (isBasicChannel() && hasSelectedAid()) {
+            try {
+                Log.v(SmartcardService._TAG, "Close basic channel - Select with out AID ...");
+                terminal.select();
+            } catch (NoSuchElementException exp) {
+//#if defined(sec)
+                // Selection of the default application fails
+                try {
+                    Log.v(SmartcardService._TAG, "Close basic channel - Exception : " + exp.getLocalizedMessage());
+                    AccessControlEnforcer access = terminal.getAccessControlEnforcer();
+                    if( access != null ){
+                        terminal.select(AccessControlEnforcer.getDefaultAccessControlAid());
+                    }
+                } catch (NoSuchElementException exp2) {
+                    // Access Control Applet not available => Don't care
+                }
+//#endif
+            }
+        }
+
         try {
-            getTerminal().closeChannel(this);
+            terminal.closeChannel(this);
+            this.mIsClosed = true;
         } finally {
             mBinder.unlinkToDeath(this, 0);
         }
@@ -126,69 +166,105 @@ class Channel implements IChannel, IBinder.DeathRecipient {
         this.mHandle = handle;
     }
 
-	public byte[] transmit(byte[] command) throws CardException {
-		if (command.length < 4) {
-			throw new IllegalArgumentException(
-					"command must not be smaller than 4 bytes");
-		}
-		if (((command[0] & (byte) 0x80) == 0)
-				&& ((byte) (command[0] & (byte) 0x60) != (byte) 0x20)) {
-			// ISO command
-			if (command[1] == (byte) 0x70) {
-				throw new IllegalArgumentException(
-						"MANAGE CHANNEL command not allowed");
-			}
-			if ((command[1] == (byte) 0xA4) && (command[2] == (byte) 0x04)) {
-				throw new IllegalArgumentException("SELECT command not allowed");
-			}
+    public byte[] transmit(byte[] command) throws CardException {
 
-		} else {
-			// GlobalPlatform command
-		}
+        if( mChannelAccess == null ){
+            throw new AccessControlException( " Channel access not set.");
+        }
+        if (mChannelAccess.getCallingPid() !=  mCallingPid) {
 
-		// set channel number bits
-		command[0] = setChannelToClassByte(command[0], mChannelNumber);
 
-		byte[] rsp = getTerminal().transmit(command, 2, 0, 0, null);
-		return rsp;
-	}
 
-	/**
-	 * Returns a copy of the given CLA byte where the channel number bits are
-	 * set as specified by the given channel number
-	 *
-	 * See GlobalPlatform Card Specification 2.2.0.7: 11.1.4 Class Byte Coding
-	 *
-	 * @param cla
-	 *            the CLA byte. Won't be modified
-	 * @param channelNumber
-	 *            within [0..3] (for first interindustry class byte coding) or
-	 *            [4..19] (for further interindustry class byte coding)
-	 * @return the CLA byte with set channel number bits. The seventh bit
-	 *         indicating the used coding (first/further interindustry class
-	 *         byte coding) might be modified
-	 */
-	private byte setChannelToClassByte(byte cla, int channelNumber) {
-		if (channelNumber < 4) {
-			// b7 = 0 indicates the first interindustry class byte coding
-			cla = (byte) ((cla & 0xBC) | channelNumber);
-		} else if (channelNumber < 20) {
-			// b7 = 1 indicates the further interindustry class byte coding
-			cla = (byte) ((cla & 0xB0) | 0x40 | (channelNumber - 4));
-		} else {
-			throw new IllegalArgumentException(
-					"Channel number must be within [0..19]");
-		}
-		return cla;
-	}
+            throw new AccessControlException(" Wrong Caller PID. ");
+        }
+
+
+
+        checkCommand(command);
+
+
+        if (command.length < 4) {
+            throw new IllegalArgumentException(
+                    " command must not be smaller than 4 bytes");
+        }
+        if (((command[0] & (byte) 0x80) == 0)
+                && ((byte) (command[0] & (byte) 0x60) != (byte) 0x20)) {
+            // ISO command
+            if (command[1] == (byte) 0x70) {
+                throw new IllegalArgumentException(
+                        "MANAGE CHANNEL command not allowed");
+            }
+            if ((command[1] == (byte) 0xA4) && (command[2] == (byte) 0x04)) {
+                throw new IllegalArgumentException("SELECT command not allowed");
+            }
+
+        } else {
+            // GlobalPlatform command
+        }
+
+        // set channel number bits
+        command[0] = setChannelToClassByte(command[0], mChannelNumber);
+
+        byte[] rsp = getTerminal().transmit(command, 2, 0, 0, null);
+
+        return rsp;
+    }
+
+    /**
+     * Returns a copy of the given CLA byte where the channel number bits are
+     * set as specified by the given channel number
+     *
+     * See GlobalPlatform Card Specification 2.2.0.7: 11.1.4 Class Byte Coding
+     *
+     * @param cla
+     *            the CLA byte. Won't be modified
+     * @param channelNumber
+     *            within [0..3] (for first interindustry class byte coding) or
+     *            [4..19] (for further interindustry class byte coding)
+     * @return the CLA byte with set channel number bits. The seventh bit
+     *         indicating the used coding (first/further interindustry class
+     *         byte coding) might be modified
+     */
+    private byte setChannelToClassByte(byte cla, int channelNumber) {
+        if (channelNumber < 4) {
+            // b7 = 0 indicates the first interindustry class byte coding
+            cla = (byte) ((cla & 0xBC) | channelNumber);
+        } else if (channelNumber < 20) {
+            // b7 = 1 indicates the further interindustry class byte coding
+            boolean isSM = (cla & 0x0C) != 0;
+            cla = (byte) ((cla & 0xB0) | 0x40 | (channelNumber - 4));
+            if (isSM) cla |= 0x20;
+        } else {
+            throw new IllegalArgumentException(
+                    "Channel number must be within [0..19]");
+        }
+        return cla;
+    }
 
 
     public void setChannelAccess(ChannelAccess channelAccess) {
         this.mChannelAccess = channelAccess;
     }
 
-    public ChannelAccess getChannelAccess() {
-        return mChannelAccess;
+    public ChannelAccess getChannelAccess(){
+        return this.mChannelAccess;
+    }
+
+    public void setCallingPid( int pid) {
+
+
+
+        mCallingPid = pid;
+    }
+
+    private void checkCommand( byte[] command ) {
+        if( getTerminal().getAccessControlEnforcer() != null ) {
+            // check command if it complies to the access rules.
+            // if not an exception is thrown
+            getTerminal().getAccessControlEnforcer().checkCommand(this, command);
+        } else {
+            throw new AccessControlException( "FATAL: Access Controller not set for Terminal: " + getTerminal().getName());
+        }
     }
 
 
@@ -217,7 +293,108 @@ class Channel implements IChannel, IBinder.DeathRecipient {
      */
     public byte[] getSelectResponse()
     {
-	return mSelectResponse;
+        return mSelectResponse;
     }
 
+    boolean isClosed(){
+
+        return mIsClosed;
+    }
+
+    void setClosed(){
+
+        mIsClosed = true;
+    }
+
+    /**
+     * Implementation of the SmartcardService Channel interface according to OMAPI.
+     *
+     * @author
+     */
+    final class SmartcardServiceChannel extends ISmartcardServiceChannel.Stub {
+
+        private final SmartcardServiceSession mSession;
+        public SmartcardServiceChannel( SmartcardServiceSession session ){
+            mSession = session;
+        }
+
+        @Override
+        public void close(SmartcardError error) throws RemoteException {
+
+            SmartcardService.clearError(error);
+            try {
+                if( mSession != null )
+                    mSession.removeChannel(Channel.this);
+
+                Channel.this.close();
+            } catch (Exception e) {
+                SmartcardService.setError(error, e);
+            }
+        }
+
+        public void setClosed(){
+            Channel.this.setClosed();
+        }
+
+        @Override
+        public boolean isClosed() throws RemoteException {
+            return Channel.this.isClosed();
+        }
+
+        @Override
+        public boolean isBasicChannel()
+                throws RemoteException {
+            return Channel.this.isBasicChannel();
+        }
+
+        @Override
+        public byte[] getSelectResponse()
+                throws RemoteException {
+            return Channel.this.getSelectResponse();
+        }
+
+        @Override
+        public ISmartcardServiceSession getSession()
+                throws RemoteException {
+            return Channel.this.mSession;
+        }
+
+        @Override
+        public byte[] transmit(byte[] command, SmartcardError error)
+                throws RemoteException {
+            SmartcardService.clearError(error);
+
+            try {
+                if (isClosed()) {
+                    SmartcardService.setError(error, IllegalStateException.class, "channel is closed");
+                    return null;
+                }
+
+                if (command == null) {
+                    SmartcardService.setError(error, NullPointerException.class, "command must not be null");
+                    return null;
+                }
+                if (command.length < 4) {
+                    SmartcardService.setError(error, IllegalArgumentException.class,
+                            "command must have at least 4 bytes");
+                    return null;
+                }
+
+                Channel.this.setCallingPid(Binder.getCallingPid());
+
+
+                Log.v(SmartcardService._TAG, "Channel: " + Channel.this.getChannelNumber() + "( Command: " + Util.bytesToString(command) + ")");
+
+                byte[] response = Channel.this.transmit(command);
+
+                Log.v(SmartcardService._TAG, "Channel:" + Channel.this.getChannelNumber() + "( Response: " + Util.bytesToString(response) + ")");
+
+                return response;
+            } catch (Exception e) {
+                Log.v(SmartcardService._TAG, "transmit Exception: " + e.getMessage() + " (Command: " + Util.bytesToString(command) + ")");
+                SmartcardService.setError(error, e);
+                return null;
+            }
+        }
+    };
 }

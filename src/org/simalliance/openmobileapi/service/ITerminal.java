@@ -21,6 +21,12 @@ package org.simalliance.openmobileapi.service;
 
 import org.simalliance.openmobileapi.service.ISmartcardServiceCallback;
 
+import org.simalliance.openmobileapi.service.SmartcardService.SmartcardServiceSession;
+import org.simalliance.openmobileapi.service.security.AccessControlEnforcer;
+import org.simalliance.openmobileapi.service.security.ChannelAccess;
+import android.content.pm.PackageManager;
+
+
 /**
  * Smartcard service interface for terminal resources.
  */
@@ -74,7 +80,7 @@ public interface ITerminal {
      * @throws CardException if opening the basic channel failed or the basic
      *             channel is in use.
      */
-    long openBasicChannel(ISmartcardServiceCallback callback) throws CardException;
+    Channel openBasicChannel(SmartcardServiceSession session, ISmartcardServiceCallback callback) throws CardException;
 
     /**
      * Opens the basic channel to the card.
@@ -85,7 +91,7 @@ public interface ITerminal {
      * @throws CardException if opening the basic channel failed or the basic
      *             channel is in use.
      */
-    long openBasicChannel(byte[] aid, ISmartcardServiceCallback callback) throws Exception;
+    Channel openBasicChannel(SmartcardServiceSession session, byte[] aid, ISmartcardServiceCallback callback) throws Exception;
 
     /**
      * Opens a logical channel to the card.
@@ -94,7 +100,7 @@ public interface ITerminal {
      * @return a handle for the logical channel.
      * @throws CardException if opening the logical channel failed.
      */
-    long openLogicalChannel(ISmartcardServiceCallback callback) throws Exception;
+    Channel openLogicalChannel(SmartcardServiceSession session, ISmartcardServiceCallback callback) throws Exception;
 
     /**
      * Opens a logical channel to the card.
@@ -104,7 +110,7 @@ public interface ITerminal {
      * @return a handle for the logical channel.
      * @throws CardException if opening the logical channel failed.
      */
-    long openLogicalChannel(byte[] aid, ISmartcardServiceCallback callback) throws Exception;
+    Channel openLogicalChannel(SmartcardServiceSession session, byte[] aid, ISmartcardServiceCallback callback) throws Exception;
 
     /**
      * Returns <code>true</code> if a card is present; <code>false</code>
@@ -143,4 +149,38 @@ public interface ITerminal {
      * be retrieved by the reader implementation.
      */
     public byte[] getSelectResponse();
+
+    /**
+     * Exchanges APDU (SELECT, READ/WRITE) to the
+     * given EF by File ID and file path via iccIO.
+     *
+     * The given command is checked and might be rejected.
+     *
+     * @param fileID
+     * @param filePath
+     * @param cmd
+     * @return
+     */
+    public byte[] simIOExchange(int fileID, String filePath, byte[] cmd) throws Exception;
+
+
+
+    /**
+     * Set ups the Channel Access object for access control
+     * from the cached access rules
+     * for the given packageNames and the AID of the applet to be accessed.
+     *
+     * @return ChannelAccess object containing the access flags/filter.
+     */
+    ChannelAccess setUpChannelAccess( PackageManager packageManager, byte[] aid, String packageName, ISmartcardServiceCallback callback);
+
+    /**
+     * Set up the correct access control hander ARA (or ARF)
+     * and if indicated loads all accesses rules for the terminal.
+     * @param boolean flag if Access Rules should be loaded.
+     */
+    void initializeAccessControl( boolean loadAtStartup, ISmartcardServiceCallback callback);
+
+    AccessControlEnforcer getAccessControlEnforcer();
+
 }

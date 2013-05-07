@@ -24,8 +24,6 @@ import org.simalliance.openmobileapi.service.security.ChannelAccess;
 
 import org.simalliance.openmobileapi.service.ISmartcardServiceCallback;
 
-
-
 /**
  * Smartcard service interface for channel resources.
  */
@@ -57,7 +55,7 @@ public interface IChannel {
      *
      * @return the associated terminal.
      */
-    Terminal getTerminal();
+    ITerminal getTerminal();
 
     /**
      * Transmits the specified command APDU and returns the response APDU.
@@ -78,10 +76,15 @@ public interface IChannel {
     void setChannelAccess(ChannelAccess channelAccess);
 
     /**
-     * @return
+     * @return channelAccess
      */
     ChannelAccess getChannelAccess();
 
+    /**
+     * Sets calling pid for validation in checkCommand.
+     * @param pid calling pid of the device application
+     */
+    void setCallingPid( int pid );
 
 
     /**

@@ -21,9 +21,15 @@ package org.simalliance.openmobileapi.service.terminals;
 
 import android.content.Context;
 import org.simalliance.openmobileapi.service.CardException;
+import org.simalliance.openmobileapi.service.SmartcardService;
 import org.simalliance.openmobileapi.service.Terminal;
+import org.simalliance.openmobileapi.service.Util;
+import org.simalliance.openmobileapi.service.security.arf.SecureElementException;
+
+
 import android.os.ServiceManager;
 import android.os.SystemProperties;
+import android.util.Log;
 
 import com.android.internal.telephony.ITelephony;
 import com.android.internal.telephony.TelephonyProperties;
@@ -35,10 +41,10 @@ public class UiccTerminal extends Terminal {
 
     private ITelephony manager = null;
 
-    private int[] channelId = new int[4];
+    private int[] channelId = new int[20];
 
     public UiccTerminal(Context context) {
-        super("SIM: UICC", context);
+        super(SmartcardService._UICC_TERMINAL + " - UICC", context);
 
         try {
             manager = ITelephony.Stub.asInterface(ServiceManager
@@ -51,7 +57,8 @@ public class UiccTerminal extends Terminal {
     }
 
     public boolean isCardPresent() throws CardException {
-        String prop = SystemProperties.get(TelephonyProperties.PROPERTY_SIM_STATE);
+        String prop = SystemProperties
+                .get(TelephonyProperties.PROPERTY_SIM_STATE);
         if ("READY".equals(prop)) {
             return true;
         }
@@ -101,105 +108,144 @@ public class UiccTerminal extends Terminal {
             data = ByteArrayToString(command, 5);
         }
 
-// FIXME:(SNI) Use Basic Channel only
-//        int channelNumber = cla & 0xf;
-//
-//        if (channelNumber == 0) {
+        int channelNumber = parseChannelNumber(command[0]);
+
+        if (channelNumber == 0) {
+
             try {
-                String response = manager.transmitIccBasicChannel(cla, ins, p1, p2, p3, data);
+                String response = manager.transmitIccBasicChannel(cla, ins, p1,
+                        p2, p3, data);
                 return StringToByteArray(response);
             } catch (Exception ex) {
                 throw new CardException("transmit command failed");
             }
-//        } else {
-//            if ((channelNumber > 0) && (channelId[channelNumber] == 0)) {
-//                throw new CardException("channel not open");
-//            }
-//
-//            try {
-//                String response = manager.transmitIccLogicalChannel(cla & 0xf0, ins,
-//                        channelId[channelNumber], p1, p2, p3, data);
-//                return StringToByteArray(response);
-//            } catch (Exception ex) {
-//                throw new CardException("transmit command failed");
-//            }
-//        }
+
+        } else {
+            if ((channelNumber > 0) && (channelId[channelNumber] == 0)) {
+                throw new CardException("channel not open");
+            }
+
+            try {
+                String response = manager.transmitIccLogicalChannel(cla, ins, channelId[channelNumber], p1, p2, p3, data);
+                return StringToByteArray(response);
+            } catch (Exception ex) {
+                throw new CardException("transmit command failed");
+            }
+        }
+    }
+
+    /**
+     * Exchanges APDU (SELECT, READ/WRITE) to the
+     * given EF by File ID and file path via iccIO.
+     *
+     * The given command is checked and might be rejected.
+     *
+     * @param fileID
+     * @param filePath
+     * @param cmd
+     * @return
+     */
+    @Override
+    public byte[] simIOExchange(int fileID,String filePath,byte[] cmd)
+            throws Exception {
+        try {
+            int ins = 0;
+            int p1=cmd[2] & 0xff;
+            int p2=cmd[3] & 0xff;
+            int p3=cmd[4] & 0xff;
+            switch(cmd[1]) {
+                case (byte)0xB0: ins=176; break;
+                case (byte)0xB2: ins=178; break;
+                case (byte)0xA4: ins=192;  p1=0; p2=0; p3=15; break;
+                default:
+                    throw new SecureElementException("Unknown SIM_IO command");
+            }
+
+            byte[] ret = manager.transmitIccSimIO(fileID,ins,p1,p2,p3,filePath);
+
+            return ret;
+        } catch (Exception e) {
+            throw new Exception("SIM IO access error");
+    }}
+
+
+    /**
+     * Extracts the channel number from a CLA byte. Specified in GlobalPlatform
+     * Card Specification 2.2.0.7: 11.1.4 Class Byte Coding
+     *
+     * @param cla
+     *            the command's CLA byte
+     * @return the channel number within [0x00..0x0F]
+     */
+    private int parseChannelNumber(byte cla) {
+        // bit 7 determines which standard is used
+        boolean isFirstInterindustryClassByteCoding = ((cla & 0x40) == 0x00);
+
+        if(isFirstInterindustryClassByteCoding){
+            // First Interindustry Class Byte Coding
+            // see 11.1.4.1: channel number is encoded in the 2 rightmost bits
+            return cla & 0x03;
+        }else{
+            // Further Interindustry Class Byte Coding
+            // see 11.1.4.2: channel number is encoded in the 4 rightmost bits
+            return (cla & 0x0F) + 4;
+        }
     }
 
     @Override
     protected int internalOpenLogicalChannel() throws Exception {
 
-		byte[] manageChannelCommand = new byte[] { 0x00, 0x70, 0x00, 0x00, 0x01 };
-		byte[] rsp = transmit(manageChannelCommand, 2, 0x9000, 0, "MANAGE CHANNEL");
-		if (rsp.length == 2 && ((rsp[0] == (byte)0x6D || rsp[0] == (byte)0x6E) && rsp[1] == (byte)0x00))
-			throw new NoSuchElementException("logical channels not supported");
-		if ((rsp.length == 2) && ((rsp[0] == (byte)0x68) && (rsp[1] == (byte)0x81)))
-			throw new NoSuchElementException("logical channels not supported");
-		if (rsp.length == 2 && (rsp[0] == (byte)0x6A && rsp[1] == (byte)0x81))
-			throw new MissingResourceException("no free channel available", "", "");
-		if (rsp.length != 3)
-			throw new MissingResourceException("unsupported MANAGE CHANNEL response data", "", "");
-		int channelNumber = rsp[0] & 0xFF;
-		if (channelNumber == 0 || channelNumber > 19)
-			throw new MissingResourceException("invalid logical channel number returned", "", "");
-
-		return channelNumber;
+        mSelectResponse = null;
+        throw new UnsupportedOperationException(
+                "open channel without select AID is not supported by UICC");
     }
 
     @Override
     protected int internalOpenLogicalChannel(byte[] aid) throws Exception {
-		if(aid == null)
-			throw new NullPointerException("aid must not be null");
 
-		byte[] manageChannelCommand = new byte[] { 0x00, 0x70, 0x00, 0x00, 0x01 };
-		byte[] rsp = transmit(manageChannelCommand, 2, 0x9000, 0, "MANAGE CHANNEL");
+        if (aid == null) {
+            throw new NullPointerException("aid must not be null");
+        }
+        mSelectResponse = null;
+        for (int i = 1; i < channelId.length; i++)
+            if (channelId[i] == 0) {
+                channelId[i] = manager.openIccLogicalChannel(ByteArrayToString(
+                        aid, 0));
 
-		if (rsp.length == 2 && ((rsp[0] == (byte)0x6D || rsp[0] == (byte)0x6E) && rsp[1] == (byte)0x00))
-			throw new NoSuchElementException("logical channels not supported");
+                if (!(channelId[i] > 0)) { // channelId[i] == 0
+                    channelId[i] = 0;
+                    int lastError = manager.getLastError();
 
-		if ((rsp.length == 2) && ((rsp[0] == (byte)0x68) && (rsp[1] == (byte)0x81)))
-			throw new NoSuchElementException("logical channels not supported");
-
-		if (rsp.length == 2 && (rsp[0] == (byte)0x6A && rsp[1] == (byte)0x81))
-			throw new MissingResourceException("no free channel available", "", "");
-
-		if (rsp.length != 3)
-			throw new MissingResourceException("unsupported MANAGE CHANNEL response data", "", "");
-
-		int channelNumber = rsp[0] & 0xFF;
-		if (channelNumber == 0 || channelNumber > 19)
-			throw new MissingResourceException("invalid logical channel number returned", "", "");
-
-		byte[] selectCommand = new byte[aid.length + 6];
-		selectCommand[0] = (byte) channelNumber;
-		if (channelNumber > 3)
-			selectCommand[0] |= 0x40;
-		selectCommand[1] = (byte) 0xA4;
-		selectCommand[2] = 0x04;
-		selectCommand[4] = (byte) aid.length;
-		System.arraycopy(aid, 0, selectCommand, 5, aid.length);
-		try
-		{
-			transmit(selectCommand, 2, 0x9000, 0xFFFF, "SELECT");
-		}
-		catch(CardException exp)
-		{
-			internalCloseLogicalChannel(channelNumber);
-			throw new NoSuchElementException(exp.getMessage());
-		}
-
-		return channelNumber;
+                    if (lastError == 2) {
+                        throw new MissingResourceException(
+                                "all channels are used", "", "");
+                    }
+                    if (lastError == 3) {
+                        throw new NoSuchElementException("applet not found");
+                    }
+                    throw new CardException("open channel failed");
+                }
+                return i;
+            }
+        throw new MissingResourceException("out of channels", "","");
     }
 
     @Override
-    protected void internalCloseLogicalChannel(int channelNumber) throws CardException {
-		if (channelNumber > 0) {
-			byte cla = (byte) channelNumber;
-			if (channelNumber > 3) {
-				cla |= 0x40;
-			}
-			byte[] manageChannelClose = new byte[] { cla, 0x70, (byte) 0x80, (byte) channelNumber };
-			transmit(manageChannelClose, 2, 0x9000, 0xFFFF, "MANAGE CHANNEL");
-		}
+    protected void internalCloseLogicalChannel(int channelNumber)
+            throws CardException {
+        if (channelNumber == 0) {
+            return;
+        }
+        if (channelId[channelNumber] == 0) {
+            throw new CardException("channel not open");
+        }
+        try {
+            if (manager.closeIccLogicalChannel(channelId[channelNumber]) == false) {
+                throw new CardException("close channel failed");
+            }
+        } catch (Exception ex) {
+            throw new CardException("close channel failed");
+        }
+        channelId[channelNumber] = 0;
     }
 }

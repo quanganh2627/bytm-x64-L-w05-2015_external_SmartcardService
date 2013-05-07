@@ -21,6 +21,11 @@ package org.simalliance.openmobileapi;
 
 import java.io.IOException;
 
+import org.simalliance.openmobileapi.service.ISmartcardServiceChannel;
+import org.simalliance.openmobileapi.service.SmartcardError;
+
+import android.os.RemoteException;
+
 /**
  * Instances of this class represent an ISO7816-4 channel opened to a secure
  * element. It can be either a logical channel or the default channel. They can
@@ -34,17 +39,15 @@ public class Channel {
 
     private Session mSession;
 
-    private long mHChannel;
+    private final ISmartcardServiceChannel mChannel;
+    private final SEService mService;
 
-    private boolean mIsLogicalChannel;
+    private final Object mLock = new Object();
 
-    private boolean mIsClosed;
-
-    Channel(Session session, long hChannel, boolean isLogicalChannel) {
+    Channel(SEService service, Session session, ISmartcardServiceChannel channel) {
+        mService = service;
         mSession = session;
-        mHChannel = hChannel;
-        mIsLogicalChannel = isLogicalChannel;
-        mIsClosed = false;
+        mChannel = channel;
     }
 
     /**
@@ -53,11 +56,18 @@ public class Channel {
      * transmit(byte[] command) before closing the channel.
      */
     public void close() {
-
-        if (isClosed()) {
-		return;
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
         }
-        mSession.closeChannel(this);
+        if (mChannel == null) {
+            throw new NullPointerException("channel must not be null");
+        }
+        SmartcardError error = new SmartcardError();
+        try {
+            mChannel.close(error);
+        } catch (RemoteException e) {
+        }
+        SEService.checkForException(error);
     }
 
     /**
@@ -66,7 +76,17 @@ public class Channel {
      * @return <code>true</code> if the channel is closed, <code>false</code> otherwise.
      */
     public boolean isClosed() {
-        return mIsClosed;
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
+        }
+        if (mChannel == null) {
+            throw new NullPointerException("channel must not be null");
+        }
+        try {
+            return mChannel.isClosed();
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage());
+        }
     }
 
     /**
@@ -76,7 +96,17 @@ public class Channel {
      *         this channel is a logical channel.
      */
     public boolean isBasicChannel() {
-        return !mIsLogicalChannel;
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
+        }
+        if (mChannel == null) {
+            throw new NullPointerException("channel must not be null");
+        }
+        try {
+            return mChannel.isBasicChannel();
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage());
+        }
     }
 
     /**
@@ -111,10 +141,24 @@ public class Channel {
      *             policy
      */
     public byte[] transmit(byte[] command) throws IOException {
-        if (isClosed()) {
-            throw new IllegalStateException("channel is closed");
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
         }
-        return mSession.getReader().getSEService().transmit(this, command);
+        if (mChannel == null) {
+            throw new NullPointerException("channel must not be null");
+        }
+
+        byte[] response;
+        synchronized( mLock ) {
+            SmartcardError error = new SmartcardError();
+            try {
+                response = mChannel.transmit(command, error);
+            } catch (Exception e) {
+                throw new IOException(e.getMessage());
+            }
+            SEService.checkForException(error);
+        }
+        return response;
     }
 
     /**
@@ -137,21 +181,33 @@ public class Channel {
      */
     public byte[] getSelectResponse()
     {
-	byte[] response = mSession.getReader().getSEService().getSelectResponse(this);
-	if(response != null && response.length == 0)
-		response = null;
-	return response;
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
+        }
+        if (mChannel == null) {
+            throw new NullPointerException("channel must not be null");
+        }
+        try {
+            if (mChannel.isClosed()) {
+                throw new IllegalStateException("channel is closed");
+            }
+        } catch (Exception e1) {
+            throw new RuntimeException(e1.getMessage());
+        }
+
+        byte[] response;
+        try {
+            response = mChannel.getSelectResponse();
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage());
+        }
+
+        if(response != null && response.length == 0)
+            response = null;
+        return response;
     }
 
     // ******************************************************************
     // package private methods
     // ******************************************************************
-
-    long getHandle() {
-        return mHChannel;
-    }
-
-    void setClosed() {
-        mIsClosed = true;
-    }
 }

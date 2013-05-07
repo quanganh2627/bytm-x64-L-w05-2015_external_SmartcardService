@@ -20,7 +20,10 @@
 package org.simalliance.openmobileapi;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import org.simalliance.openmobileapi.service.ISmartcardServiceReader;
+import org.simalliance.openmobileapi.service.ISmartcardServiceSession;
+import org.simalliance.openmobileapi.service.SmartcardError;
+import android.os.RemoteException;
 
 /**
  * Instances of this class represent Secure Element Readers connected to this
@@ -32,24 +35,27 @@ import java.util.ArrayList;
  */
 public class Reader {
 
-    private String mName;
+    private final String mName;
+    private final SEService mService;
+    private ISmartcardServiceReader mReader;
 
-    private SEService mService;
+    private final Object mLock = new Object();
 
-    private final ArrayList<Session> mSessions = new ArrayList<Session>();
 
-    Reader(String name, SEService service) {
+    Reader(SEService service, String name ) {
         mName = name;
         mService = service;
+        mReader = null;
+
     }
 
     /**
      * Return the user-friendly name of this reader.
      * <ul>
-	 * <li>If this reader is a SIM reader, then its name must start with the "SIM" prefix.</li>
-	 * <li>If the reader is a SD or micro SD reader, then its name must start with the "SD" prefix</li>
-	 * <li>If the reader is a embedded SE reader, then its name must start with the "eSE" prefix</li>
-	 * <ul>
+     * <li>If this reader is a SIM reader, then its name must start with the "SIM" prefix.</li>
+     * <li>If the reader is a SD or micro SD reader, then its name must start with the "SD" prefix</li>
+     * <li>If the reader is a embedded SE reader, then its name must start with the "eSE" prefix</li>
+     * <ul>
      *
      * @return name of this Reader
      */
@@ -71,10 +77,32 @@ public class Reader {
      */
     public Session openSession() throws IOException {
 
-        synchronized (mSessions) {
-            Session session = new Session(getName(), this);
-            mSessions.add(session);
-            return session;
+        if( mService == null || mService.isConnected() == false ){
+            throw new IllegalStateException("service is not connected");
+        }
+        if( mReader == null ){
+            try {
+                mReader = mService.getReader(mName);
+            } catch (Exception e) {
+                throw new IOException("service reader cannot be accessed.");
+            }
+        }
+
+        synchronized (mLock) {
+            SmartcardError error = new SmartcardError();
+            ISmartcardServiceSession session;
+            try {
+                session = mReader.openSession(error);
+            } catch (RemoteException e) {
+                throw new IOException( e.getMessage() );
+            }
+            SEService.checkForException(error);
+
+            if( session == null ){
+                throw new IOException( "service session is null." );
+            }
+
+            return new Session(mService, session, this);
         }
     }
 
@@ -84,8 +112,26 @@ public class Reader {
      * @return <code>true</code> if the SE is present, <code>false</code> otherwise.
      */
     public boolean isSecureElementPresent() {
+        if( mService == null || mService.isConnected() == false ){
+            throw new IllegalStateException("service is not connected");
+        }
+        if( mReader == null ){
+            try {
+                mReader = mService.getReader(mName);
+            } catch (Exception e) {
+                throw new IllegalStateException("service reader cannot be accessed. " + e.getLocalizedMessage());
+            }
+        }
 
-        return mService.isSecureElementPresent(this);
+        SmartcardError error = new SmartcardError();
+        boolean flag;
+        try {
+            flag = mReader.isSecureElementPresent(error);
+        } catch (RemoteException e) {
+            throw new RuntimeException(e.getMessage());
+        }
+        SEService.checkForException(error);
+        return flag;
     }
 
     /**
@@ -102,43 +148,23 @@ public class Reader {
      * all these sessions will be closed.
      */
     public void closeSessions() {
-        synchronized (mSessions) {
-
-            for (Session session : mSessions) {
-                if (session != null && !session.isClosed()) {
-                    session.closeChannels();
-                    session.setClosed();
+        if( mService == null || mService.isConnected() == false ){
+            throw new IllegalStateException("service is not connected");
+        }
+        if( mReader != null ) {
+            synchronized (mLock) {
+                SmartcardError error = new SmartcardError();
+                try {
+                    mReader.closeSessions(error);
+                } catch (RemoteException e) {
+                    throw new RuntimeException(e.getMessage());
                 }
+                SEService.checkForException(error);
             }
-            mSessions.clear();
         }
     }
 
     // ******************************************************************
     // package private methods
     // ******************************************************************
-
-    /**
-     * Closes the defined Session and all its allocated resources. <br>
-     * After calling this method the Session can not be used for the
-     * communication with the Secure Element any more.
-     *
-     * @param session the Session that should be closed
-     * @throws NullPointerException if Session is null
-     */
-    void closeSession(Session session) {
-        if (session == null) {
-            throw new NullPointerException("session is null");
-        }
-
-        synchronized (mSessions) {
-
-            if (!session.isClosed()) {
-                session.closeChannels();
-                session.setClosed();
-            }
-            mSessions.remove(session);
-        }
-    }
-
 }

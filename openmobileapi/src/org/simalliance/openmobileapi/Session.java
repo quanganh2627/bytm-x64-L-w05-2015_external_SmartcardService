@@ -20,8 +20,14 @@
 package org.simalliance.openmobileapi;
 
 import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.MissingResourceException;
+import java.util.NoSuchElementException;
+
+import org.simalliance.openmobileapi.service.ISmartcardServiceChannel;
+import org.simalliance.openmobileapi.service.ISmartcardServiceSession;
+import org.simalliance.openmobileapi.service.SmartcardError;
+
+import android.os.RemoteException;
 
 /**
  * Instances of this class represent a connection session to one of the secure
@@ -33,23 +39,107 @@ import java.util.Set;
  */
 public class Session {
 
-    private Reader mReader;
+    private final Object mLock = new Object();
+    private final SEService mService;
+    private final Reader mReader;
+    private final ISmartcardServiceSession mSession;
 
-    private String mName;
-
-    private boolean mIsClosed;
-
-    private byte[] mAtr;
-
-    /** List of open channels in use of by this client. */
-    private final Set<Channel> mChannels = new HashSet<Channel>();
-
-    Session(String name, Reader reader) {
-        mAtr = reader.getSEService().getAtr(reader);
+    Session(SEService service, ISmartcardServiceSession session, Reader reader) {
+        mService = service;
         mReader = reader;
-        mName = name;
-        mIsClosed = false;
+        mSession = session;
     }
+
+    /**
+     * Get the reader that provides this session.
+     *
+     * @return The Reader object.
+     */
+    public Reader getReader() {
+        return mReader;
+    }
+
+    /**
+     * Get the Answer to Reset of this Secure Element. <br>
+     * The returned byte array can be null if the ATR for this Secure Element
+     * is not available.
+     *
+     * @return the ATR as a byte array or null.
+     */
+    public byte[] getATR() {
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
+        }
+        if( mSession == null ){
+            throw new NullPointerException("service session is null");
+        }
+        try {
+            return mSession.getAtr();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Close the connection with the Secure Element. This will close any
+     * channels opened by this application with this Secure Element.
+     */
+    public void close() {
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
+        }
+        if( mSession != null ){
+            synchronized (mLock) {
+                SmartcardError error = new SmartcardError();
+                try {
+                    mSession.close(error);
+                } catch (RemoteException e) {
+                    throw new RuntimeException(e.getMessage());
+                }
+                SEService.checkForException(error);
+            }
+        }
+    }
+
+    /**
+     * Tells if this session is closed.
+     *
+     * @return <code>true</code> if the session is closed, false otherwise.
+     */
+    public boolean isClosed() {
+        try {
+            if( mSession == null ){
+                return true;
+            }
+            return mSession.isClosed();
+        } catch (RemoteException e) {
+            throw new RuntimeException(e.getMessage());
+        }
+    }
+
+    /**
+     * Close any channel opened on this session.
+     * @throws IOException
+     */
+    public void closeChannels() {
+
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
+        }
+
+        if( mSession != null ){
+            synchronized (mLock) {
+                SmartcardError error = new SmartcardError();
+                try {
+                    mSession.closeChannels(error);
+                } catch (RemoteException e) {
+                    throw new RuntimeException(e.getMessage());
+                }
+                SEService.checkForException(error);
+            }
+        }
+    }
+
 
     /**
      * Get an access to the basic channel, as defined in the ISO/IEC 7816-4 specification (the one that has
@@ -89,11 +179,57 @@ public class Session {
      */
     public Channel openBasicChannel(byte[] aid) throws IOException {
 
-        synchronized (mChannels) {
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
+        }
+        if( mSession == null ){
+            throw new NullPointerException("service session is null");
+        }
+        if (getReader() == null) {
+            throw new NullPointerException("reader must not be null");
+        }
 
-            Channel basicChannel = mReader.getSEService().openBasicChannel(this, aid);
-            mChannels.add(basicChannel);
-            return basicChannel;
+        synchronized (mLock) {
+            ISmartcardServiceChannel channel;
+            SmartcardError error = new SmartcardError();
+            try {
+                channel = mSession.openBasicChannelAid(
+                        aid,
+                        mService.getCallback(),
+                        error);
+            } catch (Exception e) {
+                throw new IOException(e.getMessage());
+            }
+            SEService.checkForException(error);
+            error.clear();
+            boolean b = basicChannelInUse(error);
+            SEService.checkForException(error);
+            if ( b ) {
+                return null;
+            }
+            error.clear();
+            b = channelCannotBeEstablished(error);
+            SEService.checkForException(error);
+            if (b) {
+                return null;
+            }
+            if(aid == null || aid.length == 0)
+            {
+                error.clear();
+                b = isDefaultApplicationSelected(error);
+                SEService.checkForException(error);
+                if (!b) {
+                    return null;
+                }
+            }
+            error.clear();
+            checkIfAppletAvailable(error);
+            SEService.checkForException(error);
+
+            if (channel == null)
+               return null;
+
+            return new Channel(mService, this, channel );
         }
     }
 
@@ -111,7 +247,7 @@ public class Session {
      * @param aid the AID of the Applet to be selected on this channel, as
      *            a byte array.
      * @throws IOException if there is a communication problem to the reader or the Secure Element. (e.g. if the SE is
-     *    not responding)
+     *  not responding)
      * @throws IllegalStateException if the Secure Element is used after being
      *             closed.
      * @throws IllegalArgumentException if the aid's length is not within 5 to
@@ -126,104 +262,109 @@ public class Session {
      */
     public Channel openLogicalChannel(byte[] aid) throws IOException {
 
-        synchronized (mChannels) {
-
-            Channel logicalChannel = mReader.getSEService().openLogicalChannel(this, aid);
-            mChannels.add(logicalChannel);
-            return logicalChannel;
-
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
         }
-    }
-
-    /**
-     * Close the connection with the Secure Element. This will close any
-     * channels opened by this application with this Secure Element.
-     */
-    public void close() {
-
-        mReader.closeSession(this);
-    }
-
-    /**
-     * Tells if this session is closed.
-     *
-     * @return <code>true</code> if the session is closed, false otherwise.
-     */
-    public boolean isClosed() {
-        return mIsClosed;
-    }
-
-    /**
-     * Get the Answer to Reset of this Secure Element. <br>
-     * The returned byte array can be null if the ATR for this Secure Element
-     * is not available.
-     *
-     * @return the ATR as a byte array or null.
-     */
-    public byte[] getATR() {
-        return mAtr;
-    }
-
-    /**
-     * Get the reader that provides this session.
-     *
-     * @return The Reader object.
-     */
-    public Reader getReader() {
-        return mReader;
-    }
-
-    /**
-     * Close any channel opened on this session.
-     */
-    public void closeChannels() {
-
-        synchronized (mChannels) {
-            for (Channel channel : mChannels) {
-                if (channel != null && !channel.isClosed()) {
-                    try {
-                        mReader.getSEService().closeChannel(channel);
-                    } catch (Exception ignore) {
-                    }
-                    channel.setClosed();
-                }
+        if( mSession == null ){
+            throw new NullPointerException("service session is null");
+        }
+        if (getReader() == null) {
+            throw new NullPointerException("reader must not be null");
+        }
+        synchronized (mLock) {
+            SmartcardError error = new SmartcardError();
+            ISmartcardServiceChannel channel;
+            try {
+                channel = mSession.openLogicalChannel(
+                        aid,
+                        mService.getCallback(),
+                        error);
+            } catch (Exception e) {
+                throw new IOException(e.getMessage());
             }
-            mChannels.clear();
+            SEService.checkForException(error);
+            error.clear();
+            boolean b = channelCannotBeEstablished(error);
+            SEService.checkForException(error);
+            if (b) {
+                return null;
+            }
+            error.clear();
+            checkIfAppletAvailable(error);
+            SEService.checkForException(error);
+
+           if (channel == null)
+              return null;
+
+            return new Channel(mService, this, channel);
         }
     }
+
 
     // ******************************************************************
     // package private methods
     // ******************************************************************
 
-    /**
-     * Closes the specified channel. <br>
-     * After calling this method the session can not be used for the
-     * communication with the secure element any more.
-     *
-     * @param hChannel the channel handle obtained by an open channel command.
-     */
-    void closeChannel(Channel channel) {
-        if (channel == null) {
-            throw new NullPointerException("channel is null");
-        }
 
-        synchronized (mChannels) {
-
-            if (!channel.isClosed()) {
-                try {
-                    mReader.getSEService().closeChannel(channel);
-                } catch (Exception ignore) {
+    private boolean isDefaultApplicationSelected(SmartcardError error) {
+        Exception exp = error.createException();
+        if (exp != null) {
+                String msg = exp.getMessage();
+                if (msg != null) {
+                    if (msg.contains("default application is not selected")) {
+                        return false;
+                    }
                 }
+        }
+        return true;
+    }
 
-                channel.setClosed();
+    private boolean basicChannelInUse(SmartcardError error) {
+        Exception exp = error.createException();
+        if (exp != null) {
+            String msg = exp.getMessage();
+            if (msg != null) {
+                if (msg.contains("basic channel in use")) {
+                    return true;
+                }
             }
-            mChannels.remove(channel);
+        }
+        return false;
+    }
+
+    private boolean channelCannotBeEstablished(SmartcardError error) {
+        Exception exp = error.createException();
+        if (exp != null) {
+            if (exp instanceof MissingResourceException) {
+                return true;
+            }
+            String msg = exp.getMessage();
+            if (msg != null) {
+                if (msg.contains("channel in use")) {
+                    return true;
+                }
+                if (msg.contains("open channel failed")) {
+                    return true;
+                }
+                if (msg.contains("out of channels")) {
+                    return true;
+                }
+                if (msg.contains("MANAGE CHANNEL")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void checkIfAppletAvailable(SmartcardError error) throws NoSuchElementException {
+        Exception exp = error.createException();
+        if (exp != null) {
+            if(exp instanceof NoSuchElementException) {
+                throw new NoSuchElementException("Applet with the defined aid does not exist in the SE");
+            }
         }
     }
 
-    void setClosed() {
-        mIsClosed = true;
-    }
 
 }

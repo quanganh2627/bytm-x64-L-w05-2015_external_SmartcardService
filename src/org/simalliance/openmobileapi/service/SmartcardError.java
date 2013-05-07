@@ -83,7 +83,7 @@ public class SmartcardError implements Parcelable {
      *
      * @return the encoded exception or <code>null</code> if empty.
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "rawtypes" })
     public Exception createException() {
         try {
             if (mClazz.length() == 0) {
@@ -115,7 +115,7 @@ public class SmartcardError implements Parcelable {
      *            information.
      * @param message the exception message.
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "rawtypes" })
     public void setError(Class clazz, String message) {
         this.mClazz = (clazz == null) ? "" : clazz.getName();
         this.mMessage = (message == null) ? "" : message;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 Giesecke & Devrient GmbH.
+ * Copyright 2012 Giesecke & Devrient GmbH.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,43 +16,84 @@
 
 package org.simalliance.openmobileapi.service.security;
 
+
 public class ChannelAccess {
 
-    protected boolean mUnlimitedAccess = false;
+    public enum ACCESS {
+        ALLOWED, DENIED, UNDEFINED;
+    }
 
-    protected boolean mNoAccess = false;
+    protected String CHANNEL_ACCESS_TAG = "ChannelAccess";
 
-    protected boolean mUseAccessConditions = false;
+    protected String mPackageName = "";
+
+    protected ACCESS mAccess = ACCESS.UNDEFINED;
+
+    protected ACCESS mApduAccess = ACCESS.UNDEFINED;
+
+    protected boolean mUseApduFilter = false;
 
     protected int mCallingPid = 0;
 
-    protected String mReason = "";
+    protected String mReason = "no access by default";
 
-    protected AccessCondition[] mAccessConditions = null;
+    protected ACCESS mNFCEventAccess = ACCESS.UNDEFINED;
 
-    public boolean isUnlimitedAccess() {
-        return mUnlimitedAccess;
+    protected ApduFilter[] mApduFilter = null;
+
+    public ChannelAccess clone(){
+        ChannelAccess ca = new ChannelAccess();
+        ca.setAccess(this.mAccess, this.mReason);
+        ca.setPackageName( this.mPackageName);
+        ca.setApduAccess(this.mApduAccess);
+        ca.setCallingPid(this.mCallingPid);
+        ca.setNFCEventAccess(this.mNFCEventAccess);
+        ca.setUseApduFilter(this.mUseApduFilter);
+        if( this.mApduFilter != null ) {
+            ApduFilter[] apduFilter = new ApduFilter[this.mApduFilter.length];
+            int i = 0;
+            for( ApduFilter filter : mApduFilter ){
+                apduFilter[i++] = filter.clone();
+            }
+            ca.setApduFilter(apduFilter);
+        } else {
+            ca.setApduFilter(null);
+        }
+        return ca;
     }
 
-    public void setUnlimitedAccess(boolean unlimitedAccess) {
-        this.mUnlimitedAccess = unlimitedAccess;
+    public String getPackageName(){
+        return mPackageName;
     }
 
-    public boolean isNoAccess() {
-        return mNoAccess;
+    public void setPackageName( String name ){
+        this.mPackageName = name;
     }
 
-    public void setNoAccess(boolean noAccess, String reason) {
-        this.mNoAccess = noAccess;
+    public ACCESS getApduAccess() {
+        return mApduAccess;
+    }
+
+    public void setApduAccess(ACCESS apduAccess) {
+        this.mApduAccess = apduAccess;
+    }
+
+
+    public ACCESS getAccess() {
+        return mAccess;
+    }
+
+    public void setAccess(ACCESS access, String reason) {
+        this.mAccess = access;
         this.mReason = reason;
     }
 
-    public boolean isUseAccessConditions() {
-        return mUseAccessConditions;
+    public boolean isUseApduFilter() {
+        return mUseApduFilter;
     }
 
-    public void setUseAccessConditions(boolean useAccessConditions) {
-        this.mUseAccessConditions = useAccessConditions;
+    public void setUseApduFilter(boolean useApduFilter) {
+        this.mUseApduFilter = useApduFilter;
     }
 
     public void setCallingPid(int callingPid) {
@@ -66,13 +107,51 @@ public class ChannelAccess {
     public String getReason() {
         return mReason;
     }
-
-    public AccessCondition[] getAccessConditions() {
-        return mAccessConditions;
+    public ApduFilter[] getApduFilter() {
+        return mApduFilter;
     }
 
-    public void setAccessConditions(AccessCondition[] accessConditions) {
-        mAccessConditions = accessConditions;
+    public void setApduFilter(ApduFilter[] accessConditions) {
+        mApduFilter = accessConditions;
+    }
+    public ACCESS getNFCEventAccess() {
+        return mNFCEventAccess;
     }
 
+    public void setNFCEventAccess(ACCESS access) {
+        this.mNFCEventAccess = access;
+    }
+
+    @Override
+    public String toString(){
+        StringBuilder sb = new StringBuilder();
+        sb.append(this.getClass().getName());
+        sb.append("\n [mPackageName=");
+        sb.append(mPackageName);
+        sb.append(", mAccess=");
+        sb.append(mAccess);
+        sb.append(", mApduAccess=");
+        sb.append(mApduAccess);
+        sb.append(", mUseApduFilter=");
+        sb.append(mUseApduFilter);
+        sb.append(", mApduFilter=");
+        if( mApduFilter != null ){
+            for( ApduFilter f : mApduFilter ){
+                sb.append(f.toString());
+                sb.append(" ");
+            }
+        } else {
+            sb.append("null");
+        }
+        sb.append(", mCallingPid=");
+        sb.append(mCallingPid);
+        sb.append(", mReason=");
+        sb.append(mReason);
+        sb.append(", mNFCEventAllowed=");
+        sb.append(mNFCEventAccess);
+        sb.append("]\n");
+
+        return sb.toString();
+
+    }
 }
