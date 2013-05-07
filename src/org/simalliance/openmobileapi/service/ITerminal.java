@@ -180,8 +180,9 @@ public interface ITerminal {
      * Set up the correct access control hander ARA (or ARF)
      * and if indicated loads all accesses rules for the terminal.
      * @param boolean flag if Access Rules should be loaded.
+     * @return true if rules have been successfully loaded
      */
-    void initializeAccessControl( boolean loadAtStartup, ISmartcardServiceCallback callback);
+    boolean initializeAccessControl( boolean loadAtStartup, ISmartcardServiceCallback callback);
 
     AccessControlEnforcer getAccessControlEnforcer();
 

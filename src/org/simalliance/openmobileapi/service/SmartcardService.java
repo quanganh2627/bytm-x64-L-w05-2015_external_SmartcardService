@@ -22,6 +22,7 @@ package org.simalliance.openmobileapi.service;
 import dalvik.system.DexClassLoader;
 import dalvik.system.DexFile;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.Service;
@@ -33,6 +34,10 @@ import android.content.pm.PackageManager;
 import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
+import android.os.Message;
 import android.os.IBinder;
 import android.os.RemoteException;
 
@@ -108,7 +113,10 @@ public final class SmartcardService extends Service {
      */
     private Map<String, ITerminal> mAddOnTerminals = new TreeMap<String, ITerminal>();
 
-
+    /**
+     * ServiceHandler use to load rules from the terminal
+     */
+    private ServiceHandler mServiceHandler;
 
     public SmartcardService() {
         super();
@@ -128,6 +136,17 @@ public final class SmartcardService extends Service {
     public void onCreate() {
         Log.v(_TAG, Thread.currentThread().getName()
                 + " smartcard service onCreate");
+
+        // Start up the thread running the service.  Note that we create a
+        // separate thread because the service normally runs in the process's
+        // main thread, which we don't want to block.  We also make it
+        // background priority so CPU-intensive work will not disrupt our UI.
+        HandlerThread thread = new HandlerThread("SmartCardServiceHandler");
+        thread.start();
+
+        // Get the HandlerThread's Looper and use it for our Handler
+        mServiceHandler = new ServiceHandler(thread.getLooper());
+
         createTerminals();
         new InitialiseTask().execute();
     }
@@ -201,19 +220,11 @@ public final class SmartcardService extends Service {
                 final boolean simLoaded = simAction && intent.getExtras().getString("ss").equals("LOADED");
                 if( simReady ){
                     Log.i(_TAG, "SIM is ready. Checking access rules for updates.");
-                    try {
-                        initializeAccessControl( _UICC_TERMINAL, null );
-                    } catch (Exception e) {
-
-                    }
-                }
+                    mServiceHandler.sendMessage(MSG_LOAD_UICC_RULES, 5);
+                 }
                  else if( simLoaded){
                     Log.i(_TAG, "SIM is loaded. Checking access rules for updates.");
-                    try {
-                        initializeAccessControl( _UICC_TERMINAL, null );
-                    } catch (Exception e) {
-
-                    }
+                    mServiceHandler.sendMessage(MSG_LOAD_UICC_RULES, 5);
                 }
             }
         };
@@ -232,11 +243,7 @@ public final class SmartcardService extends Service {
                 final boolean nfcAdapterOn = nfcAdapterAction && intent.getIntExtra("android.nfc.extra.ADAPTER_STATE", 1) == 3; // is NFC Adapter turned on ?
                 if( nfcAdapterOn){
                     Log.i(_TAG, "NFC Adapter is ON. Checking access rules for updates.");
-                    try {
-                        initializeAccessControl( SmartcardService._eSE_TERMINAL, null );
-                    } catch (Exception e) {
-
-                    }
+                    mServiceHandler.sendMessage(MSG_LOAD_ESE_RULES, 5);
                 }
             }
         };
@@ -253,11 +260,7 @@ public final class SmartcardService extends Service {
                 final boolean mediaMounted = intent.getAction().equals("android.intent.action.MEDIA_MOUNTED");
                 if( mediaMounted){
                     Log.i(_TAG, "New Media is mounted. Checking access rules for updates.");
-                    try {
-                        initializeAccessControl( SmartcardService._SD_TERMINAL, null );
-                    } catch (Exception e) {
-
-                    }
+                    mServiceHandler.sendMessage(MSG_LOAD_SD_RULES, 5);
                 }
             }
         };
@@ -271,7 +274,9 @@ public final class SmartcardService extends Service {
      *
      * @param se
      */
-    public synchronized void initializeAccessControl( String se, ISmartcardServiceCallback callback ) {
+    public synchronized boolean initializeAccessControl( String se, ISmartcardServiceCallback callback ) {
+        boolean result = true;
+
         Log.i(_TAG, "Initializing Access Control");
 
         if( callback == null ) {
@@ -283,7 +288,6 @@ public final class SmartcardService extends Service {
         while(iter.hasNext()){
             ITerminal terminal = iter.next();
             if( terminal == null ){
-
                 continue;
             }
 
@@ -291,11 +295,10 @@ public final class SmartcardService extends Service {
                 if( se == null || terminal.getName().startsWith(se)) {
                     if( terminal.isCardPresent() ) {
                         Log.i(_TAG, "Initializing Access Control for " + terminal.getName());
-                        terminal.initializeAccessControl(true, callback);
+                        result &= terminal.initializeAccessControl(true, callback);
                     }
                 }
             } catch (CardException e) {
-
             }
         }
         col = this.mAddOnTerminals.values();
@@ -303,7 +306,6 @@ public final class SmartcardService extends Service {
         while(iter.hasNext()){
             ITerminal terminal = iter.next();
             if( terminal == null ){
-
                 continue;
             }
 
@@ -311,15 +313,16 @@ public final class SmartcardService extends Service {
                 if( se == null || terminal.getName().startsWith(se)) {
                     if(terminal.isCardPresent() ) {
                         Log.i(_TAG, "Initializing Access Control for " + terminal.getName());
-                        terminal.initializeAccessControl(true, callback);
+                        result &= terminal.initializeAccessControl(true, callback);
                     } else {
                         Log.i(_TAG, "NOT initializing Access Control for " + terminal.getName() + " SE not present.");
                     }
                 }
             } catch (CardException e) {
-
             }
         }
+
+        return result;
     }
 
     public void onDestroy() {
@@ -328,6 +331,8 @@ public final class SmartcardService extends Service {
             terminal.closeChannels();
         for (ITerminal terminal : mAddOnTerminals.values())
             terminal.closeChannels();
+
+        mServiceHandler = null;
 
         Log.v(_TAG, Thread.currentThread().getName()
                 + " ... smartcard service onDestroy");
@@ -833,4 +838,67 @@ public final class SmartcardService extends Service {
         }
     }
 
+    /*
+     * Handler Thread used to load and initiate ChannelAccess condition
+     */
+    public final static int MSG_LOAD_UICC_RULES  = 1;
+    public final static int MSG_LOAD_ESE_RULES   = 2;
+    public final static int MSG_LOAD_SD_RULES    = 3;
+
+    public final static int NUMBER_OF_TRIALS      = 3;
+    public final static long WAIT_TIME            = 1000;
+
+    private final class ServiceHandler extends Handler {
+
+        @SuppressLint("HandlerLeak")
+        public ServiceHandler(Looper looper) {
+            super(looper);
+        }
+
+        public void sendMessage(int what, int nbTries) {
+           mServiceHandler.removeMessages(what);
+           Message newMsg = mServiceHandler.obtainMessage(what, nbTries, 0);
+           mServiceHandler.sendMessage(newMsg);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+           boolean result = true;
+
+           Log.i(_TAG, "Handle msg: what=" + msg.what + " nbTries=" + msg.arg1);
+
+           switch(msg.what) {
+           case MSG_LOAD_UICC_RULES:
+               try {
+                   result = initializeAccessControl( _UICC_TERMINAL, null );
+               } catch (Exception e) {
+                   Log.e(_TAG, "Got exception:" + e);
+               }
+               break;
+
+           case MSG_LOAD_ESE_RULES:
+               try {
+                   result = initializeAccessControl( _eSE_TERMINAL, null );
+               } catch (Exception e) {
+                   Log.e(_TAG, "Got exception:" + e);
+               }
+               break;
+
+           case MSG_LOAD_SD_RULES:
+               try {
+                   result = initializeAccessControl( _SD_TERMINAL, null );
+               } catch (Exception e) {
+                   Log.e(_TAG, "Got exception:" + e);
+               }
+               break;
+           }
+
+           if(!result && msg.arg1 > 0) {
+               // Try to re-post the message
+               Log.e(_TAG, "Fail to load rules: Let's try another time (" + msg.arg1 + " remaining attempt");
+               Message newMsg = mServiceHandler.obtainMessage(msg.what, msg.arg1 - 1, 0);
+               mServiceHandler.sendMessageDelayed(newMsg, WAIT_TIME);
+           }
+        }
+    }
 }

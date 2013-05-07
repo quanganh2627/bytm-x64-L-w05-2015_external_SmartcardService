@@ -99,9 +99,9 @@ public class AccessControlEnforcer {
         return AraController.getAraMAid();
     }
 
-    public synchronized void initialize( boolean loadAtStartup, ISmartcardServiceCallback callback ) {
+    public synchronized boolean initialize( boolean loadAtStartup, ISmartcardServiceCallback callback ) {
+        boolean status = true;
         String denyMsg = "";
-
         readSecurityProfile();
 
         /* 1 - Let's try to use ARA */
@@ -138,6 +138,7 @@ public class AccessControlEnforcer {
                     Log.i(_TAG, e.getLocalizedMessage() );
                     mUseArf = false;
                     mFullAccess = false;
+                    status = false;
                 }
             }
         }
@@ -169,6 +170,7 @@ public class AccessControlEnforcer {
             } catch( Exception e ) {
                 // ARF cannot be used since we got an exception
                 mUseArf = false;
+                status = false;
                 denyMsg = e.getLocalizedMessage();
                 Log.i(_TAG, e.getLocalizedMessage() );
             }
@@ -191,6 +193,8 @@ public class AccessControlEnforcer {
 
             Log.i(_TAG, "Deny any access to:" + mTerminal.getName());
         }
+
+        return status;
     }
 
     public static Certificate decodeCertificate(byte[] certData) throws CertificateException {
