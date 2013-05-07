@@ -368,7 +368,8 @@ public class AccessRuleCache {
         if( ar_do.getNfcArDo() != null ){
             channelAccess.setNFCEventAccess(ar_do.getNfcArDo().isNfcAllowed() ? ChannelAccess.ACCESS.ALLOWED : ChannelAccess.ACCESS.DENIED);
         } else {
-            channelAccess.setNFCEventAccess(ChannelAccess.ACCESS.DENIED);
+            // GP says that by default NFC should have the same right as for APDU access
+            channelAccess.setNFCEventAccess(channelAccess.getApduAccess());
         }
         return channelAccess;
     }
