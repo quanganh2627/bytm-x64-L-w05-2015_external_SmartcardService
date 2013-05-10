@@ -238,4 +238,17 @@ public class SEService {
     ISmartcardServiceCallback getCallback() {
         return mCallback;
     }
+
+    public boolean[] isNFCEventAllowed(String reader, byte[] aid, String[] packageNames) {
+        SmartcardError error = new SmartcardError();
+        boolean[] results = null;
+        try {
+            results =  mSmartcardService.isNFCEventAllowed(reader, aid, packageNames, getCallback(), error);
+        } catch (RemoteException e) {
+	    throw new RuntimeException(e.getMessage());
+        }
+        checkForException(error);
+
+        return results;
+    }
 }
