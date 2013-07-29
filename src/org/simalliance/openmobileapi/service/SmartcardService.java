@@ -514,15 +514,27 @@ public final class SmartcardService extends Service {
         return classes.toArray();
     }
 
-    public String getProcessNameFromPid(int pid) {
-        ActivityManager am = (ActivityManager) getSystemService(Activity.ACTIVITY_SERVICE);
-        List<ActivityManager.RunningAppProcessInfo> appInfoList = am.getRunningAppProcesses();
-        for (ActivityManager.RunningAppProcessInfo appInfo : appInfoList) {
-            if (appInfo.pid == pid) {
-                return appInfo.processName;
-            }
-        }
-        throw new AccessControlException("CallerPackageName can not be determined");
+    /**
+     * Get package name from the user id.
+     *
+     * This shall fix the problem the issue that process name != package name
+     * due to anndroid:process attribute in manifest file.
+     *
+     * But this call is not really secure either since a uid can be shared between one
+     * and more apks
+     *
+     * @param uid
+     * @return The first package name associated with this uid.
+     */
+    public String getPackageNameFromCallingUid(int uid ){
+       PackageManager packageManager = getPackageManager();
+       if(packageManager != null){
+               String packageName[] = packageManager.getPackagesForUid(uid);
+               if( packageName != null && packageName.length > 0 ){
+                       return packageName[0];
+               }
+       }
+       throw new AccessControlException("Caller PackageName can not be determined");
     }
 
     /**
@@ -715,12 +727,12 @@ public final class SmartcardService extends Service {
                 }
 
 
-                String processName = getProcessNameFromPid(Binder.getCallingPid());
-                Log.v(_TAG, "Enable access control on basic channel.");
+                String packageName = getPackageNameFromCallingUid( Binder.getCallingUid());
+                Log.v(_TAG, "Enable access control on basic channel for " + packageName);
                 ChannelAccess channelAccess = mReader.getTerminal().setUpChannelAccess(
                         getPackageManager(),
                         aid,
-                        processName,
+                        packageName,
                         callback );
                 Log.v(_TAG, "Access control successfully enabled.");
 
@@ -786,12 +798,12 @@ public final class SmartcardService extends Service {
                 }
 
 
-                String processName = getProcessNameFromPid(Binder.getCallingPid());
-                Log.v(_TAG, "Enable access control on logical channel.");
+                String packageName = getPackageNameFromCallingUid( Binder.getCallingUid());
+                Log.v(_TAG, "Enable access control on logical channel for " + packageName);
                 ChannelAccess channelAccess = mReader.getTerminal().setUpChannelAccess(
                         getPackageManager(),
                         aid,
-                        processName,
+                        packageName,
                         callback );
                 Log.v(_TAG, "Access control successfully enabled.");
                channelAccess.setCallingPid(Binder.getCallingPid());
