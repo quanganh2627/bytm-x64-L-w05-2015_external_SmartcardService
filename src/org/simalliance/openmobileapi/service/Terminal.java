@@ -28,6 +28,7 @@ import android.os.RemoteException;
 import android.util.Log;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.security.AccessControlException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -711,5 +712,29 @@ public abstract class Terminal implements ITerminal {
         }
     }
 
+    public void dump(PrintWriter writer, String prefix) {
+        writer.println(prefix + "SMARTCARD SERVICE TERMINAL: " + mName);
+        writer.println();
 
+        prefix += "  ";
+
+        writer.println(prefix + "mIsConnected:" + mIsConnected);
+        writer.println();
+
+        /* Dump the list of currunlty openned channels */
+        writer.println(prefix + "List of open channels:");
+
+        for(IChannel channel: mChannels.values()) {
+            writer.println(prefix + "  channel " + channel.getChannelNumber() + ": ");
+            writer.println(prefix + "    package      : " + channel.getChannelAccess().getPackageName());
+            writer.println(prefix + "    pid          : " + channel.getChannelAccess().getCallingPid());
+            writer.println(prefix + "    aid selected : " + channel.hasSelectedAid());
+            writer.println(prefix + "    basic channel: " + channel.isBasicChannel());
+        }
+
+        writer.println();
+
+        /* Dump ACE data */
+        if(mAccessControlEnforcer != null) mAccessControlEnforcer.dump(writer, prefix);
+    }
 }

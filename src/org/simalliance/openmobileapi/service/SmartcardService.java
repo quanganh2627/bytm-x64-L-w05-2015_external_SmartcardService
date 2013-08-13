@@ -29,8 +29,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.os.AsyncTask;
 import android.os.Binder;
+import android.os.Build;
 import android.os.IBinder;
 import android.os.RemoteException;
 
@@ -42,6 +44,8 @@ import org.simalliance.openmobileapi.service.Terminal.SmartcardServiceReader;
 
 import android.util.Log;
 
+import java.io.FileDescriptor;
+import java.io.PrintWriter;
 import java.lang.reflect.Constructor;
 import java.security.AccessControlException;
 import java.util.ArrayList;
@@ -126,6 +130,38 @@ public final class SmartcardService extends Service {
                 + " smartcard service onCreate");
         createTerminals();
         new InitialiseTask().execute();
+    }
+
+    @Override
+    public void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
+        writer.println("SMARTCARD SERVICE (dumpsys activity service org.simalliance.openmobileapi)");
+        writer.println();
+
+        String prefix = "  ";
+
+        if(!Build.IS_DEBUGGABLE) {
+            writer.println(prefix + "Your build is not debuggable!");
+            writer.println(prefix + "Smarcard service dump is only available for userdebug and eng build");
+        } else {
+            writer.println(prefix + "List of terminals:");
+            for (ITerminal terminal : mTerminals.values()) {
+               writer.println(prefix + "  " + terminal.getName());
+            }
+            writer.println();
+
+            writer.println(prefix + "List of add-on terminals:");
+            for (ITerminal terminal : mAddOnTerminals.values()) {
+               writer.println(prefix + "  " + terminal.getName());
+            }
+            writer.println();
+
+            for (ITerminal terminal : mTerminals.values()) {
+               terminal.dump(writer, prefix);
+            }
+            for (ITerminal terminal : mAddOnTerminals.values()) {
+               terminal.dump(writer, prefix);
+            }
+        }
     }
 
     private class InitialiseTask extends AsyncTask<Void, Void, Void> {

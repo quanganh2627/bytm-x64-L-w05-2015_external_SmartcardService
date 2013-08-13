@@ -23,6 +23,9 @@ package org.simalliance.openmobileapi.service.security.arf.PKCS15;
 import java.security.AccessControlException;
 import java.util.MissingResourceException;
 
+import android.os.Build;
+import android.os.SystemProperties;
+
 import org.simalliance.openmobileapi.service.IChannel;
 import org.simalliance.openmobileapi.service.security.arf.SecureElement;
 import org.simalliance.openmobileapi.service.security.arf.SecureElementException;
@@ -72,6 +75,10 @@ public class PKCS15Handler {
     private byte[] mPkcs15Path = null;
     private byte[] mACMainPath = null;
 
+    // SIM Allowed modes:
+    private boolean mSimIoAllowed;
+    private boolean mSimAllianceAllowed;
+
     /**
      * Updates "Access Control Rules"
      */
@@ -107,8 +114,10 @@ public class PKCS15Handler {
     private void initACEntryPoint()
         throws PKCS15Exception, SecureElementException
     {
-
         byte[] DODFPath=null;
+
+        readAllowedSimMode();
+
         for(int ind=0;ind<CONTAINER_AIDS.length;ind++) {
             if (selectACRulesContainer(CONTAINER_AIDS[ind])) {
 
@@ -147,41 +156,65 @@ public class PKCS15Handler {
         boolean isActiveContainer=true;
 
         if (aid==null) {
+            mArfChannel = null;
+
             // S3 uses logical channel to access filesystem directly. This is done with an empty byte array.
             // if open logical channel does not work, last fallback is using SIM_IO (AT-CRSM).
             // 2012-11-08
-            if ((mArfChannel=mSEHandle.openLogicalArfChannel(new byte[]{}))==null) {
-                mArfChannel = null;
-                // Since ARF gets only active if the terminal belongs to a SIM/UICC
-                // we have to switch to SIM_IO
-                mSEHandle.setSeInterface(SecureElement.SIM_IO);
+            if(mSimAllianceAllowed)
+                mArfChannel = mSEHandle.openLogicalArfChannel(new byte[]{});
+
+            if (mArfChannel != null) {
+                Log.i(TAG, "Logical channels are used to access to PKC15");
+                mSEHandle.setSeInterface(SecureElement.SIM_ALLIANCE);
+            }
+            else {
+                if(mSimIoAllowed) {
+                    // Since ARF gets only active if the terminal belongs to a SIM/UICC
+                    // we have to switch to SIM_IO
+                    Log.i(TAG, "Fall back into ARF with SIM_IO");
+                    mSEHandle.setSeInterface(SecureElement.SIM_IO);
+                }
+                else {
+                    Log.i(TAG, "SIM IO is not allowed: cannot access to ARF");
+                    isActiveContainer = false;
+                }
             }
 
-            if( mPkcs15Path == null ) { // estimate PKCS15 path only if it is not known already.
+            if(isActiveContainer && mPkcs15Path == null ) { // estimate PKCS15 path only if it is not known already.
                 mACMainPath = null;
                 // EF_DIR parsing
                 EFDIR DIRObject=new EFDIR(mSEHandle);
                 mPkcs15Path=DIRObject.lookupAID(PKCS15_AID);
                 if( mPkcs15Path == null ) {
+                    Log.i(TAG, "Cannot use ARF: cannot select PKCS#15 directory via EF Dir");
                     // TODO: Here it might be possible to set a default path
                     // so that SIMs without EF-Dir could be supported.
                     throw new PKCS15Exception("Cannot select PKCS#15 directory via EF Dir");
                 }
             }
         }
+
         // if an AID is given use logical channel.
         else {
-            // Selection of Applet/ADF via AID is done via SCAPI and logical Channels
-            mSEHandle.setSeInterface(SecureElement.SIM_ALLIANCE);
-            if ((mArfChannel=mSEHandle.openLogicalArfChannel(aid))==null) {
-                isActiveContainer=false;
-                Log.w(TAG,"GPAC/PKCS#15 ADF not found!!");
-            } else {
-                // ARF is selected via AID.
-                if( mPkcs15Path != null ){ // if there is a change from path selection to AID selection, then reset AC Main path.
-                    mACMainPath = null;
+
+            if(!mSimAllianceAllowed) {
+                isActiveContainer = false;
+            }
+            else {
+                // Selection of Applet/ADF via AID is done via SCAPI and logical Channels
+                mSEHandle.setSeInterface(SecureElement.SIM_ALLIANCE);
+                if ((mArfChannel=mSEHandle.openLogicalArfChannel(aid))==null) {
+                    isActiveContainer=false;
+                    Log.w(TAG,"GPAC/PKCS#15 ADF not found!!");
                 }
-                mPkcs15Path = null; // selection is done via AID
+                else {
+                    // ARF is selected via AID.
+                    if( mPkcs15Path != null ){ // if there is a change from path selection to AID selection, then reset AC Main path.
+                        mACMainPath = null;
+                    }
+                    mPkcs15Path = null; // selection is done via AID
+                }
             }
         }
         return isActiveContainer;
@@ -217,5 +250,23 @@ public class PKCS15Handler {
             if (mArfChannel!=null)
                 mSEHandle.closeArfChannel();
         }
+    }
+
+    /**
+     * Read security allowed sim mode
+     */
+    private void readAllowedSimMode() {
+        if(!Build.IS_DEBUGGABLE) {
+            mSimIoAllowed = true;
+            mSimAllianceAllowed = true;
+        } else {
+            String level = SystemProperties.get("service.seek.arf", "simio simalliance");
+            level = SystemProperties.get("persist.service.seek.arf", level);
+
+            if(level.contains("simio")) mSimIoAllowed = true; else mSimIoAllowed = false;
+            if(level.contains("simalliance")) mSimAllianceAllowed = true; else mSimAllianceAllowed = false;
+        }
+
+        Log.i(TAG, "Allowed SIM mode: SimIo=" + mSimIoAllowed + " SimAlliance=" + mSimAllianceAllowed );
     }
 }

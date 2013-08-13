@@ -19,6 +19,8 @@
 
 package org.simalliance.openmobileapi.service;
 
+import java.io.PrintWriter;
+
 import org.simalliance.openmobileapi.service.ISmartcardServiceCallback;
 
 import org.simalliance.openmobileapi.service.SmartcardService.SmartcardServiceSession;
@@ -183,4 +185,10 @@ public interface ITerminal {
 
     AccessControlEnforcer getAccessControlEnforcer();
 
+    /**
+      * Dump the terminal state (for debugging purpose and crash tools)
+      * @param writer uses to print the dump
+      * @param prefix to be added before any new line (mainly used for indentation)
+      */
+    public void dump(PrintWriter writer, String prefix);
 }

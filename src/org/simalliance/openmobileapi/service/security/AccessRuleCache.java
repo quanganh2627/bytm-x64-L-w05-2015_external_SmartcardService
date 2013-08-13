@@ -16,6 +16,7 @@
 
 package org.simalliance.openmobileapi.service.security;
 
+import java.io.PrintWriter;
 import java.security.AccessControlException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
@@ -385,5 +386,32 @@ public class AccessRuleCache {
 
     public void setRefreshTag(byte[] refreshTag) {
         this.mRefreshTag = refreshTag;
+    }
+
+    public void dump(PrintWriter writer, String prefix) {
+        writer.println(prefix + TAG + ":");
+        prefix += "  ";
+
+        /* Dump the refresh tag */
+        writer.print(prefix + "Current refresh tag is: ");
+        if(mRefreshTag == null)  writer.print("<null>");
+        else for(byte oneByte: mRefreshTag) writer.printf("%02X:", oneByte);
+        writer.println();
+
+        /* Dump the rules cache */
+        writer.println(prefix + "rules dump:");
+        prefix += "  ";
+
+        int i = 0;
+        for (Map.Entry<REF_DO, ChannelAccess> entry : mRuleCache.entrySet()) {
+            i++;
+            writer.print(prefix + "rule " + i + ": ");
+            writer.println(entry.getKey().toString());
+
+            writer.print(prefix + "  ->");
+            writer.println(entry.getValue().toString());
+        }
+
+        writer.println();
     }
 }
