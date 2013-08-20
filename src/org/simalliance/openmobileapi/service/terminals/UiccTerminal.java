@@ -95,7 +95,7 @@ public class UiccTerminal extends Terminal {
 
     @Override
     protected byte[] internalTransmit(byte[] command) throws CardException {
-        int cla = command[0] & 0xff;
+        int cla = clearChannelNumber(command[0]) & 0xff;
         int ins = command[1] & 0xff;
         int p1 = command[2] & 0xff;
         int p2 = command[3] & 0xff;
@@ -189,6 +189,28 @@ public class UiccTerminal extends Terminal {
             // Further Interindustry Class Byte Coding
             // see 11.1.4.2: channel number is encoded in the 4 rightmost bits
             return (cla & 0x0F) + 4;
+        }
+    }
+
+    /**
+     * Clear the channel number
+     *
+     * @param cla
+     *
+     * @return the cla without channel number
+     */
+    private byte clearChannelNumber(byte cla) {
+        // bit 7 determines which standard is used
+        boolean isFirstInterindustryClassByteCoding = ((cla & 0x40) == 0x00);
+
+        if(isFirstInterindustryClassByteCoding){
+            // First Interindustry Class Byte Coding
+            // see 11.1.4.1: channel number is encoded in the 2 rightmost bits
+            return (byte)(cla & 0xFC);
+        }else{
+            // Further Interindustry Class Byte Coding
+            // see 11.1.4.2: channel number is encoded in the 4 rightmost bits
+            return (byte)(cla & 0xF0);
         }
     }
 
