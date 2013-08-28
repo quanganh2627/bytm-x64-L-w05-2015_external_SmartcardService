@@ -104,6 +104,12 @@ public class AccessControlEnforcer {
         String denyMsg = "";
         readSecurityProfile();
 
+        if(!mTerminal.getName().startsWith(SmartcardService._UICC_TERMINAL)) {
+            // When SE is not the UICC then it's allowed to grant full access if no
+            // rules can be retreived.
+            mFullAccess = true;
+        }
+
         /* 1 - Let's try to use ARA */
         if( mUseAra && mAraController != null ){
             try {
@@ -405,9 +411,9 @@ public class AccessControlEnforcer {
         if(!Build.IS_DEBUGGABLE) {
             mUseArf = true;
             mUseAra = true;
-            mFullAccess = true;
+            mFullAccess = false; // Per default we don't grant full access.
         } else {
-            String level = SystemProperties.get("service.seek", "useara usearf fullaccess");
+            String level = SystemProperties.get("service.seek", "useara usearf");
             level = SystemProperties.get("persist.service.seek", level);
 
             if(level.contains("usearf")) mUseArf = true; else mUseArf = false;
