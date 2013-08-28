@@ -109,6 +109,10 @@ public class AccessControlEnforcer {
             // rules can be retreived.
             mFullAccess = true;
         }
+        else if("clovertrail".equals(SystemProperties.get("ro.product.board", ""))) {
+            // Support of access control is not mandatory on Clovertrail platform
+            mFullAccess = true;
+        }
 
         /* 1 - Let's try to use ARA */
         if( mUseAra && mAraController != null ){
