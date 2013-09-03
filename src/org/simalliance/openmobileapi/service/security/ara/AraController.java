@@ -451,7 +451,7 @@ public class AraController {
                 channel.close();
 
             }
-        } catch (org.simalliance.openmobileapi.service.CardException e) {
+        } catch (CardException e) {
         }
     }
 }

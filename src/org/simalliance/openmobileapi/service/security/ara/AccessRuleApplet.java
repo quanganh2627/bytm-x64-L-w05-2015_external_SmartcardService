@@ -211,7 +211,7 @@ public class AccessRuleApplet {
         throw new AccessControlException("GET REFRESH TAG not successfull.");
     }
 
-    private ResponseApdu send(CommandApdu cmdApdu) throws org.simalliance.openmobileapi.service.CardException {
+    private ResponseApdu send(CommandApdu cmdApdu) throws CardException {
 
         byte[] response = mChannel.transmit(cmdApdu.toBytes());
 
