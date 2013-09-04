@@ -46,7 +46,11 @@ public class SmartMxTerminal extends Terminal {
 
     public boolean isCardPresent() throws CardException {
         try {
-            return NfcAdapter.getDefaultAdapter(mContext).isEnabled();
+            NfcAdapter adapter =  NfcAdapter.getDefaultAdapter(mContext);
+            if(adapter == null) {
+                throw new CardException("Cannot get NFC Default Adapter");
+            }
+            return adapter.isEnabled();
         } catch (Exception e) {
             return false;
         }
@@ -54,8 +58,14 @@ public class SmartMxTerminal extends Terminal {
 
     @Override
     protected void internalConnect() throws CardException {
-        ex = NfcAdapter.getDefaultAdapter(mContext).getNfcAdapterExtrasInterface();
-
+        NfcAdapter adapter =  NfcAdapter.getDefaultAdapter(mContext);
+        if(adapter == null) {
+            throw new CardException("Cannot get NFC Default Adapter");
+        }
+        ex = adapter.getNfcAdapterExtrasInterface();
+        if(ex == null)  {
+            throw new CardException("Cannot get NFC Extra interface");
+        }
         try {
             Bundle b = ex.open("org.simalliance.openmobileapi.service", binder);
             if (b == null) {

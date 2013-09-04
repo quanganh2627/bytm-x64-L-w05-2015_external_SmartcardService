@@ -34,6 +34,7 @@ import android.content.pm.PackageManager;
 import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -215,16 +216,18 @@ public final class SmartcardService extends Service {
         BroadcastReceiver mReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                final boolean simAction = intent.getAction().equals("android.intent.action.SIM_STATE_CHANGED");
-                final boolean simReady = simAction && intent.getExtras().getString("ss").equals("READY");
-                final boolean simLoaded = simAction && intent.getExtras().getString("ss").equals("LOADED");
-                if( simReady ){
-                    Log.i(_TAG, "SIM is ready. Checking access rules for updates.");
-                    mServiceHandler.sendMessage(MSG_LOAD_UICC_RULES, 5);
-                 }
-                 else if( simLoaded){
-                    Log.i(_TAG, "SIM is loaded. Checking access rules for updates.");
-                    mServiceHandler.sendMessage(MSG_LOAD_UICC_RULES, 5);
+                if("android.intent.action.SIM_STATE_CHANGED".equals(intent.getAction())) {
+                    final Bundle  extras    = intent.getExtras();
+                    final boolean simReady  = (extras != null) && "READY".equals(extras.getString("ss"));
+                    final boolean simLoaded = (extras != null) && "LOADED".equals(extras.getString("ss"));
+                    if( simReady ){
+                        Log.i(_TAG, "SIM is ready. Checking access rules for updates.");
+                        mServiceHandler.sendMessage(MSG_LOAD_UICC_RULES, 5);
+                    }
+                    else if( simLoaded){
+                        Log.i(_TAG, "SIM is loaded. Checking access rules for updates.");
+                        mServiceHandler.sendMessage(MSG_LOAD_UICC_RULES, 5);
+                    }
                 }
             }
         };
