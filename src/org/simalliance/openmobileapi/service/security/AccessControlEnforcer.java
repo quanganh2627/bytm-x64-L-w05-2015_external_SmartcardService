@@ -137,7 +137,18 @@ public class AccessControlEnforcer {
                 denyMsg = e.getLocalizedMessage();
 
                 if( e instanceof MissingResourceException ) {
-                    throw new MissingResourceException( e.getMessage(), "", "");
+                    if(mTerminal.getName().startsWith(SmartcardService._UICC_TERMINAL)) {
+                        // If the SE is a UICC then a possible explanation could simply
+                        // be due to the fact that the UICC is old and doesn't
+                        // support logical channel (and is not compliant with GP spec).
+                        // in this case we should simply act as if no ARA was available
+                        Log.w(_TAG, "Got MissingResourceException: Does the UICC support logical channel?");
+                        Log.w(_TAG, "Full message: " +  e.getMessage());
+                    } else {
+                        // If the SE is not a UICC then this exception means that something
+                        // wrong has occured!
+                        throw new MissingResourceException( e.getMessage(), "", "");
+                    }
                 }
                 else if( mAraController.isNoSuchElement() ) {
                     Log.i(_TAG, "No ARA applet found in: " + mTerminal.getName());
