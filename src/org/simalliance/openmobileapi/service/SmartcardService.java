@@ -102,6 +102,14 @@ public final class SmartcardService extends Service {
         }
     }
 
+    /* Broadcast receivers */
+    private BroadcastReceiver mSimReceiver;
+    private BroadcastReceiver mNfcReceiver;
+    private BroadcastReceiver mMediaReceiver;
+
+    /* Async task */
+    InitialiseTask mInitialiseTask;
+
     /**
      * For now this list is setup in onCreate(), not changed later and therefore
      * not synchronized.
@@ -149,7 +157,8 @@ public final class SmartcardService extends Service {
         mServiceHandler = new ServiceHandler(thread.getLooper());
 
         createTerminals();
-        new InitialiseTask().execute();
+        mInitialiseTask = new InitialiseTask();
+        mInitialiseTask.execute();
     }
 
     @Override
@@ -206,6 +215,7 @@ public final class SmartcardService extends Service {
             registerSimStateChangedEvent(getApplicationContext()) ;
             registerAdapterStateChangedEvent(getApplicationContext());
             registerMediaMountedEvent(getApplicationContext());
+            mInitialiseTask = null;
         }
     }
 
@@ -213,7 +223,7 @@ public final class SmartcardService extends Service {
         Log.v(_TAG, "register SIM_STATE_CHANGED event");
 
         IntentFilter intentFilter = new IntentFilter("android.intent.action.SIM_STATE_CHANGED");
-        BroadcastReceiver mReceiver = new BroadcastReceiver() {
+        mSimReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if("android.intent.action.SIM_STATE_CHANGED".equals(intent.getAction())) {
@@ -232,14 +242,22 @@ public final class SmartcardService extends Service {
             }
         };
 
-        context.registerReceiver(mReceiver, intentFilter);
+        context.registerReceiver(mSimReceiver, intentFilter);
+    }
+
+    private void unregisterSimStateChangedEvent(Context context) {
+        if(mSimReceiver!= null) {
+            Log.v(_TAG, "unregister SIM_STATE_CHANGED event");
+            context.unregisterReceiver(mSimReceiver);
+            mSimReceiver = null;
+        }
     }
 
     private void registerAdapterStateChangedEvent(Context context) {
         Log.v(_TAG, "register ADAPTER_STATE_CHANGED event");
 
         IntentFilter intentFilter = new IntentFilter("android.nfc.action.ADAPTER_STATE_CHANGED");
-        BroadcastReceiver mReceiver = new BroadcastReceiver() {
+        mNfcReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 final boolean nfcAdapterAction = intent.getAction().equals("android.nfc.action.ADAPTER_STATE_CHANGED");
@@ -250,14 +268,22 @@ public final class SmartcardService extends Service {
                 }
             }
         };
-        context.registerReceiver(mReceiver, intentFilter);
+        context.registerReceiver(mNfcReceiver, intentFilter);
+    }
+
+    private void unregisterAdapterStateChangedEvent(Context context) {
+        if(mNfcReceiver!= null) {
+            Log.v(_TAG, "unregister ADAPTER_STATE_CHANGED event");
+            context.unregisterReceiver(mNfcReceiver);
+            mNfcReceiver = null;
+        }
     }
 
     private void registerMediaMountedEvent(Context context) {
         Log.v(_TAG, "register MEDIA_MOUNTED event");
 
         IntentFilter intentFilter = new IntentFilter("android.intent.action.MEDIA_MOUNTED");
-        BroadcastReceiver mReceiver = new BroadcastReceiver() {
+        mMediaReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 final boolean mediaMounted = intent.getAction().equals("android.intent.action.MEDIA_MOUNTED");
@@ -267,7 +293,15 @@ public final class SmartcardService extends Service {
                 }
             }
         };
-        context.registerReceiver(mReceiver, intentFilter);
+        context.registerReceiver(mMediaReceiver, intentFilter);
+    }
+
+    private void unregisterMediaMountedEvent(Context context) {
+        if(mMediaReceiver != null) {
+            Log.v(_TAG, "unregister MEDIA_MOUNTED event");
+            context.unregisterReceiver(mMediaReceiver);
+            mMediaReceiver = null;
+        }
     }
 
     /**
@@ -335,7 +369,16 @@ public final class SmartcardService extends Service {
         for (ITerminal terminal : mAddOnTerminals.values())
             terminal.closeChannels();
 
+        // Cancel the inialization background task if still running
+        if(mInitialiseTask != null) mInitialiseTask.cancel(true);
+
+        // Unregister all the broadcast receivers
+        unregisterSimStateChangedEvent(getApplicationContext()) ;
+        unregisterAdapterStateChangedEvent(getApplicationContext());
+        unregisterMediaMountedEvent(getApplicationContext());
+
         mServiceHandler = null;
+        mInitialiseTask = null;
 
         Log.v(_TAG, Thread.currentThread().getName()
                 + " ... smartcard service onDestroy");
