@@ -43,6 +43,8 @@ public class UiccTerminal extends Terminal {
 
     private int[] channelId = new int[20];
 
+    private String currentSelectedFilePath = "";
+
     public UiccTerminal(Context context) {
         super(SmartcardService._UICC_TERMINAL + " - UICC", context);
 
@@ -161,7 +163,11 @@ public class UiccTerminal extends Terminal {
                     throw new SecureElementException("Unknown SIM_IO command");
             }
 
-            byte[] ret = manager.transmitIccSimIO(fileID,ins,p1,p2,p3,filePath);
+            if(filePath != null && filePath.length() > 0) {
+                currentSelectedFilePath = filePath;
+            }
+
+            byte[] ret = manager.transmitIccSimIO(fileID, ins, p1, p2, p3, currentSelectedFilePath);
 
             return ret;
         } catch (Exception e) {
