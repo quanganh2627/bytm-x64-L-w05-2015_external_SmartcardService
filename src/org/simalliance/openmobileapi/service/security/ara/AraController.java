@@ -177,9 +177,12 @@ public class AraController {
                 // this indicates that no channel is left for accessing the SE element
                 Log.d(ACCESS_CONTROL_ENFORCER_TAG, "no channels left to access ARA-M: " + e.getMessage() );
                 throw (MissingResourceException)e;
-            }else {
+            } else {
                 // MANAGE CHANNEL failed or general error
-
+                // In order to be compliant with any UICC/SIM card on the market
+                // we are going to ignore the error and says that the ARA-M is not available.
+                // This not fully compliant with GP spec by required for mass compatibility.
+                mNoSuchElement = true;
                 reason = msg;
                 Log.d(ACCESS_CONTROL_ENFORCER_TAG," ARA-M can not be accessed: " + msg);
                 throw new AccessControlException(reason);
