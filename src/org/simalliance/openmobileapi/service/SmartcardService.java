@@ -311,7 +311,11 @@ public final class SmartcardService extends Service {
      *
      * @param se
      */
-    public synchronized boolean initializeAccessControl( String se, ISmartcardServiceCallback callback ) {
+    public boolean initializeAccessControl(String se, ISmartcardServiceCallback callback ) {
+        return initializeAccessControl(false, se, callback);
+    }
+
+    public synchronized boolean initializeAccessControl(boolean reset, String se, ISmartcardServiceCallback callback ) {
         boolean result = true;
 
         Log.i(_TAG, "Initializing Access Control");
@@ -332,6 +336,7 @@ public final class SmartcardService extends Service {
                 if( se == null || terminal.getName().startsWith(se)) {
                     if( terminal.isCardPresent() ) {
                         Log.i(_TAG, "Initializing Access Control for " + terminal.getName());
+                        if(reset) terminal.resetAccessControl();
                         result &= terminal.initializeAccessControl(true, callback);
                     }
                 }
@@ -350,6 +355,7 @@ public final class SmartcardService extends Service {
                 if( se == null || terminal.getName().startsWith(se)) {
                     if(terminal.isCardPresent() ) {
                         Log.i(_TAG, "Initializing Access Control for " + terminal.getName());
+                        if(reset) terminal.resetAccessControl();
                         result &= terminal.initializeAccessControl(true, callback);
                     } else {
                         Log.i(_TAG, "NOT initializing Access Control for " + terminal.getName() + " SE not present.");
@@ -928,7 +934,7 @@ public final class SmartcardService extends Service {
            switch(msg.what) {
            case MSG_LOAD_UICC_RULES:
                try {
-                   result = initializeAccessControl( _UICC_TERMINAL, null );
+                   result = initializeAccessControl(true,  _UICC_TERMINAL, null );
                } catch (Exception e) {
                    Log.e(_TAG, "Got exception:" + e);
                }
@@ -936,7 +942,7 @@ public final class SmartcardService extends Service {
 
            case MSG_LOAD_ESE_RULES:
                try {
-                   result = initializeAccessControl( _eSE_TERMINAL, null );
+                   result = initializeAccessControl(true, _eSE_TERMINAL, null );
                } catch (Exception e) {
                    Log.e(_TAG, "Got exception:" + e);
                }
@@ -944,7 +950,7 @@ public final class SmartcardService extends Service {
 
            case MSG_LOAD_SD_RULES:
                try {
-                   result = initializeAccessControl( _SD_TERMINAL, null );
+                   result = initializeAccessControl(true,  _SD_TERMINAL, null );
                } catch (Exception e) {
                    Log.e(_TAG, "Got exception:" + e);
                }

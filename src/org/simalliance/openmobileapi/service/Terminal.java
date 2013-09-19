@@ -589,12 +589,16 @@ public abstract class Terminal implements ITerminal {
         return mAccessControlEnforcer.setUpChannelAccess(aid, packageName, callback);
     }
 
-    public synchronized boolean initializeAccessControl( boolean loadAtStartup, ISmartcardServiceCallback callback ){
+    public synchronized boolean initializeAccessControl(boolean loadAtStartup, ISmartcardServiceCallback callback ){
         if( mAccessControlEnforcer == null ){
             mAccessControlEnforcer = new AccessControlEnforcer(this);
         }
 
         return mAccessControlEnforcer.initialize( loadAtStartup, callback );
+    }
+
+    public synchronized void resetAccessControl() {
+        if(mAccessControlEnforcer != null ) mAccessControlEnforcer.reset();
     }
 
     public AccessControlEnforcer getAccessControlEnforcer(){

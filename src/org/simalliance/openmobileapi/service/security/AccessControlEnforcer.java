@@ -74,9 +74,6 @@ public class AccessControlEnforcer {
     public AccessControlEnforcer( ITerminal terminal ) {
         mTerminal = terminal;
         mAccessRuleCache = new AccessRuleCache();
-        // by default Access Rule Applet is preferred.
-        mAraController = new AraController( this );
-
     }
 
     public PackageManager getPackageManager() {
@@ -99,7 +96,15 @@ public class AccessControlEnforcer {
         return AraController.getAraMAid();
     }
 
-    public synchronized boolean initialize( boolean loadAtStartup, ISmartcardServiceCallback callback ) {
+    public synchronized void reset() {
+        // Destroy any previous Controler
+        // in order to reset the ACE
+        Log.i(_TAG, "Reset the ACE for terminal:" + mTerminal.getName());
+        mAraController = null;
+        mArfController = null;
+    }
+
+    public synchronized boolean initialize(boolean loadAtStartup, ISmartcardServiceCallback callback) {
         boolean status = true;
         String denyMsg = "";
         readSecurityProfile();
@@ -115,6 +120,9 @@ public class AccessControlEnforcer {
         }
 
         /* 1 - Let's try to use ARA */
+        if( mUseAra && mAraController == null)
+            mAraController = new AraController(this);
+
         if( mUseAra && mAraController != null ){
             try {
                 // initialize returns true if access rules has been changed otherwise

@@ -184,6 +184,11 @@ public interface ITerminal {
      */
     boolean initializeAccessControl( boolean loadAtStartup, ISmartcardServiceCallback callback);
 
+    /**
+     * Reset the access control: should be calld when the card is changed.
+     */
+    void resetAccessControl();
+
     AccessControlEnforcer getAccessControlEnforcer();
 
     /**
