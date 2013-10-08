@@ -62,10 +62,12 @@ public class SmartMxTerminal extends Terminal {
         if(adapter == null) {
             throw new CardException("Cannot get NFC Default Adapter");
         }
+
         ex = adapter.getNfcAdapterExtrasInterface();
         if(ex == null)  {
             throw new CardException("Cannot get NFC Extra interface");
         }
+
         try {
             Bundle b = ex.open("org.simalliance.openmobileapi.service", binder);
             if (b == null) {

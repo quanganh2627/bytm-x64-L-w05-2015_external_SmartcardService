@@ -24,9 +24,6 @@ import java.io.IOException;
  * to GP Secure Element Control Access.
  *
  * The AR-DO contains one or two access rules of type APDU or NFC.
- *
- * @author
- *
  */
 public class AR_DO extends BerTlv{
 

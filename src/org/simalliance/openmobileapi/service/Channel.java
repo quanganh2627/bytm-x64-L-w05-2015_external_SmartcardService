@@ -60,6 +60,7 @@ public class Channel implements IChannel, IBinder.DeathRecipient {
     protected ISmartcardServiceCallback mCallback;
 
     protected boolean mHasSelectedAid = false;
+    protected byte[] mAid = null;
 
     Channel(SmartcardServiceSession session, Terminal terminal, int channelNumber, ISmartcardServiceCallback callback) {
         this.mChannelNumber = channelNumber;
@@ -86,7 +87,7 @@ public class Channel implements IChannel, IBinder.DeathRecipient {
         }
     }
 
-    public void close() throws CardException {
+    public synchronized void close() throws CardException {
 
 
         Terminal terminal = getTerminal();
@@ -210,6 +211,44 @@ public class Channel implements IChannel, IBinder.DeathRecipient {
         return rsp;
     }
 
+    public boolean selectNext() throws CardException {
+        if( mChannelAccess == null ){
+            throw new AccessControlException( " Channel access not set.");
+        }
+        if (mChannelAccess.getCallingPid() !=  mCallingPid) {
+            throw new AccessControlException(" Wrong Caller PID. ");
+        }
+        if( mAid == null || mAid.length == 0){
+            throw new CardException(" no aid given");
+        }
+
+        mSelectResponse = null;
+        byte[] selectCommand = new byte[5 + mAid.length];
+        selectCommand[0] = 0x00;
+        selectCommand[1] = (byte) 0xA4;
+        selectCommand[2] = 0x04;
+        selectCommand[3] = 0x02; // next occurrence
+        selectCommand[4] = (byte)mAid.length;
+        System.arraycopy(mAid, 0, selectCommand, 5, mAid.length);
+
+        // set channel number bits
+        selectCommand[0] = setChannelToClassByte(selectCommand[0], mChannelNumber);
+
+        mSelectResponse = getTerminal().transmit(selectCommand, 2, 0, 0, "SELECT NEXT");
+
+        int sw1 = mSelectResponse[mSelectResponse.length - 2] & 0xFF;
+        int sw2 = mSelectResponse[mSelectResponse.length - 1] & 0xFF;
+        int sw = (sw1 << 8) | sw2;
+
+        if( (sw & 0xF000) == 0x9000 ) {
+            return true;
+        } else if( sw == 0x6a82 ) {
+            return false;
+        } else {
+            throw new CardException(" invalid action" );
+        }
+    }
+
     /**
      * Returns a copy of the given CLA byte where the channel number bits are
      * set as specified by the given channel number
@@ -269,17 +308,20 @@ public class Channel implements IChannel, IBinder.DeathRecipient {
 
 
     /**
-     * @return
+     * true if aid during open xxx channel coud be selected.
+     * false if aid could not be or was not selected.
+     * @return boolean.
      */
     public boolean hasSelectedAid() {
         return mHasSelectedAid;
     }
 
     /**
-     * @return
+     * set selected aid flag and aid (may be null)
      */
-    public void hasSelectedAid(boolean has) {
+    public void hasSelectedAid(boolean has, byte[] aid) {
         mHasSelectedAid = has;
+        mAid = aid;
     }
 
     /**
@@ -309,7 +351,7 @@ public class Channel implements IChannel, IBinder.DeathRecipient {
     /**
      * Implementation of the SmartcardService Channel interface according to OMAPI.
      *
-     * @author
+     *
      */
     final class SmartcardServiceChannel extends ISmartcardServiceChannel.Stub {
 
@@ -323,12 +365,12 @@ public class Channel implements IChannel, IBinder.DeathRecipient {
 
             SmartcardService.clearError(error);
             try {
-                if( mSession != null )
-                    mSession.removeChannel(Channel.this);
-
                 Channel.this.close();
             } catch (Exception e) {
                 SmartcardService.setError(error, e);
+            } finally {
+                if( mSession != null )
+                    mSession.removeChannel(Channel.this);
             }
         }
 
@@ -383,17 +425,34 @@ public class Channel implements IChannel, IBinder.DeathRecipient {
                 Channel.this.setCallingPid(Binder.getCallingPid());
 
 
-                Log.v(SmartcardService._TAG, "Channel: " + Channel.this.getChannelNumber() + "( Command: " + Util.bytesToString(command) + ")");
-
                 byte[] response = Channel.this.transmit(command);
-
-                Log.v(SmartcardService._TAG, "Channel:" + Channel.this.getChannelNumber() + "( Response: " + Util.bytesToString(response) + ")");
 
                 return response;
             } catch (Exception e) {
                 Log.v(SmartcardService._TAG, "transmit Exception: " + e.getMessage() + " (Command: " + Util.bytesToString(command) + ")");
                 SmartcardService.setError(error, e);
                 return null;
+            }
+        }
+
+        @Override
+        public boolean selectNext(SmartcardError error)
+                throws RemoteException {
+            SmartcardService.clearError(error);
+
+            try {
+                if (isClosed()) {
+                    SmartcardService.setError(error, IllegalStateException.class, "channel is closed");
+                    return false;
+                }
+
+                Channel.this.setCallingPid(Binder.getCallingPid());
+
+                boolean response = Channel.this.selectNext();
+                return response;
+            } catch (Exception e) {
+                SmartcardService.setError(error, e);
+                return false;
             }
         }
     };

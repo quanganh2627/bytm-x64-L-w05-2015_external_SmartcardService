@@ -23,9 +23,6 @@ import java.io.IOException;
  * REF-AR_DO:
  * The REF-AR-DO contains access rules inclusively its corresponding references
  * for the SE application (AID reference) and device application (hash reference).
- *
- * @author
- *
  */
 public class REF_AR_DO extends BerTlv {
 

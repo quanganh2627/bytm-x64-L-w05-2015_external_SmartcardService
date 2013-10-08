@@ -37,9 +37,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
-import android.os.IBinder;
 import android.os.RemoteException;
 
 import org.simalliance.openmobileapi.service.Channel;
@@ -102,14 +102,6 @@ public final class SmartcardService extends Service {
         }
     }
 
-    /* Broadcast receivers */
-    private BroadcastReceiver mSimReceiver;
-    private BroadcastReceiver mNfcReceiver;
-    private BroadcastReceiver mMediaReceiver;
-
-    /* Async task */
-    InitialiseTask mInitialiseTask;
-
     /**
      * For now this list is setup in onCreate(), not changed later and therefore
      * not synchronized.
@@ -121,6 +113,14 @@ public final class SmartcardService extends Service {
      * not synchronized.
      */
     private Map<String, ITerminal> mAddOnTerminals = new TreeMap<String, ITerminal>();
+
+    /* Broadcast receivers */
+    private BroadcastReceiver mSimReceiver;
+    private BroadcastReceiver mNfcReceiver;
+    private BroadcastReceiver mMediaReceiver;
+
+    /* Async task */
+    InitialiseTask mInitialiseTask;
 
     /**
      * ServiceHandler use to load rules from the terminal
@@ -170,7 +170,7 @@ public final class SmartcardService extends Service {
 
         if(!Build.IS_DEBUGGABLE) {
             writer.println(prefix + "Your build is not debuggable!");
-            writer.println(prefix + "Smarcard service dump is only available for userdebug and eng build");
+            writer.println(prefix + "Smartcard service dump is only available for userdebug and eng build");
         } else {
             writer.println(prefix + "List of terminals:");
             for (ITerminal terminal : mTerminals.values()) {
@@ -204,7 +204,11 @@ public final class SmartcardService extends Service {
         @Override
         protected Void doInBackground(Void... arg0) {
 
-            initializeAccessControl(null, null);
+            try {
+                initializeAccessControl(null, null);
+            } catch( Exception e ){
+                // do nothing since this is called were nobody can react.
+            }
             return null;
         }
 
@@ -332,39 +336,49 @@ public final class SmartcardService extends Service {
                 continue;
             }
 
-            try {
-                if( se == null || terminal.getName().startsWith(se)) {
-                    if( terminal.isCardPresent() ) {
-                        Log.i(_TAG, "Initializing Access Control for " + terminal.getName());
-                        if(reset) terminal.resetAccessControl();
-                        result &= terminal.initializeAccessControl(true, callback);
-                    }
+            if( se == null || terminal.getName().startsWith(se)) {
+                boolean isCardPresent = false;
+                try {
+                    isCardPresent = terminal.isCardPresent();
+                } catch (CardException e) {
+                    isCardPresent = false;
                 }
-            } catch (CardException e) {
+
+                if(isCardPresent) {
+                    Log.i(_TAG, "Initializing Access Control for " + terminal.getName());
+                    if(reset) terminal.resetAccessControl();
+                    result &= terminal.initializeAccessControl(true, callback);
+                } else {
+                    Log.i(_TAG, "NOT initializing Access Control for " + terminal.getName() + " SE not present.");
+                }
             }
         }
+
         col = this.mAddOnTerminals.values();
         iter = col.iterator();
-        while(iter.hasNext()){
+        while(iter.hasNext()) {
             ITerminal terminal = iter.next();
             if( terminal == null ){
                 continue;
             }
 
-            try {
-                if( se == null || terminal.getName().startsWith(se)) {
-                    if(terminal.isCardPresent() ) {
-                        Log.i(_TAG, "Initializing Access Control for " + terminal.getName());
-                        if(reset) terminal.resetAccessControl();
-                        result &= terminal.initializeAccessControl(true, callback);
-                    } else {
-                        Log.i(_TAG, "NOT initializing Access Control for " + terminal.getName() + " SE not present.");
-                    }
+            if( se == null || terminal.getName().startsWith(se)) {
+                boolean isCardPresent = false;
+                try {
+                    isCardPresent = terminal.isCardPresent();
+                } catch (CardException e) {
+                    isCardPresent = false;
                 }
-            } catch (CardException e) {
+
+               if(isCardPresent) {
+                   Log.i(_TAG, "Initializing Access Control for " + terminal.getName());
+                   if(reset) terminal.resetAccessControl();
+                       result &= terminal.initializeAccessControl(true, callback);
+               } else {
+                   Log.i(_TAG, "NOT initializing Access Control for " + terminal.getName() + " SE not present.");
+               }
             }
         }
-
         return result;
     }
 
@@ -377,6 +391,7 @@ public final class SmartcardService extends Service {
 
         // Cancel the inialization background task if still running
         if(mInitialiseTask != null) mInitialiseTask.cancel(true);
+        mInitialiseTask = null;
 
         // Unregister all the broadcast receivers
         unregisterSimStateChangedEvent(getApplicationContext()) ;
@@ -384,7 +399,6 @@ public final class SmartcardService extends Service {
         unregisterMediaMountedEvent(getApplicationContext());
 
         mServiceHandler = null;
-        mInitialiseTask = null;
 
         Log.v(_TAG, Thread.currentThread().getName()
                 + " ... smartcard service onDestroy");
@@ -713,24 +727,23 @@ public final class SmartcardService extends Service {
             synchronized (mLock) {
 
                 Iterator<Channel>iter = mChannels.iterator();
-
                 try {
                     while(iter.hasNext()) {
-
                         Channel channel = iter.next();
-
                         if (channel != null && !channel.isClosed()) {
                             try {
                                 channel.close();
+                                // close changes indirectly mChannels, so we need a new iterator.
+                                iter = mChannels.iterator();
                             } catch (Exception ignore) {
+                                Log.e(_TAG, "ServiceSession channel - close Exception " + ignore.getMessage());
                             }
                             channel.setClosed();
                         }
                     }
                     mChannels.clear();
                 } catch( Exception e ) {
-
-
+                    Log.e(_TAG, "ServiceSession closeChannels Exception " + e.getMessage());
                 }
             }
         }

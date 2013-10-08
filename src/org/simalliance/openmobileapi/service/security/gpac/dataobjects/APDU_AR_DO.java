@@ -27,9 +27,6 @@ import java.util.ArrayList;
  * based on an access is NEVER/ ALWAYS allowed policy or
  * by a specific rule based on APDU filters which defines the range
  * of allowed APDUs more precisely.
- *
- * @author
- *
  */
 public class APDU_AR_DO extends BerTlv {
 

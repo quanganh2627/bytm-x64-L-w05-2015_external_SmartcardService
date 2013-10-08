@@ -207,6 +207,51 @@ public class Channel {
         return response;
     }
 
+    /**
+     * Performs a selection of the next Applet on this channel that matches to the partial AID specified
+     * in the openBasicChannel(byte[] aid) or openLogicalChannel(byte[] aid) method.
+     * This mechanism can be used by a device application to iterate through all Applets
+     * matching to the same partial AID.
+     * If selectNext() returns true a new Applet was successfully selected on this channel.
+     * If no further Applet exists with matches to the partial AID this method returns false
+     * and the already selected Applet stays selected.
+     *
+     * @return <code>true</code> if new Applet was successfully selected.
+               <code>false</code> if no further Applet exists which matches the partial AID.
+     *
+     * @throws IOException if there is a communication problem to the reader or the Secure Element.
+     * @throws IllegalStateException if the channel is used after being closed or it is not connected.
+     * @throws SecurityException if the command is filtered by the security policy
+     */
+    public boolean selectNext() throws IOException {
+        if (mService == null || mService.isConnected() == false) {
+            throw new IllegalStateException("service not connected to system");
+        }
+        if (mChannel == null) {
+            throw new IllegalStateException("channel must not be null");
+        }
+        try {
+            if (mChannel.isClosed()) {
+                throw new IllegalStateException("channel is closed");
+            }
+        } catch (Exception e1) {
+            throw new RuntimeException(e1.getMessage());
+        }
+
+        boolean response = false;
+        synchronized( mLock ) {
+            SmartcardError error = new SmartcardError();
+            try {
+                response = mChannel.selectNext(error);
+            } catch (Exception e) {
+                throw new IOException(e.getMessage());
+            }
+            SEService.checkForException(error);
+        }
+        return response;
+    }
+
+
     // ******************************************************************
     // package private methods
     // ******************************************************************

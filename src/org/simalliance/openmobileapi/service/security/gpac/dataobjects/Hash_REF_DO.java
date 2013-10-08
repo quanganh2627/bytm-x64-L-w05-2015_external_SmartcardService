@@ -25,9 +25,6 @@ import java.util.Arrays;
  * the corresponding access rules for a device application
  * (which is identified by the hash value of its certificate)
  * from and to the ARA
- *
- * @author
- *
  */
 public class Hash_REF_DO extends BerTlv {
 

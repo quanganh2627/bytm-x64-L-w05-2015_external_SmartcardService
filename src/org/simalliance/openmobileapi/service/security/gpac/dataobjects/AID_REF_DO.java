@@ -27,9 +27,6 @@ import java.util.Arrays;
  * Two different AID reference data objects exist and one
  * of these can be chosen and applied for
  * a GET DATA and STORE DATA command
- *
- * @author
- *
  */
 public class AID_REF_DO extends BerTlv {
 

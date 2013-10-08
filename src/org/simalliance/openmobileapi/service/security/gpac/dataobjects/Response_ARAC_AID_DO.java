@@ -27,9 +27,6 @@ import java.util.ArrayList;
  * In response to STORE DATA (Command-Get-ClientAIDs-DO),
  * the ARA-M shall return the AID of each of the ARA-Cs
  * currently registered within a Response-ARAC-AID-DO.
- *
- * @author
- *
  */
 public class Response_ARAC_AID_DO extends BerTlv {
 

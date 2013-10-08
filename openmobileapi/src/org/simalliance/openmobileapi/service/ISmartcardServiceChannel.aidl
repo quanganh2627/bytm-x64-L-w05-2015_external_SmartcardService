@@ -66,4 +66,17 @@ interface ISmartcardServiceChannel {
      */
     byte[] transmit(in byte[] command, out SmartcardError error);
 
+    /**
+     * Performs a selection of the next Applet on this channel that matches to the partial AID specified
+     * in the openBasicChannel(byte[] aid) or openLogicalChannel(byte[] aid) method.
+     * This mechanism can be used by a device application to iterate through all Applets
+     * matching to the same partial AID.
+     * If selectNext() returns true a new Applet was successfully selected on this channel.
+     * If no further Applet exists with matches to the partial AID this method returns false
+     * and the already selected Applet stays selected.
+     *
+     * @return <code>true</code> if new Applet was successfully selected.
+               <code>false</code> if no further Applet exists which matches the partial AID.
+     */
+    boolean selectNext(out SmartcardError error);
 }

@@ -26,9 +26,6 @@ import java.util.ArrayList;
  * The length field of the Response-ALL-AR-DO shall always contain the full length
  * of the DOs value to determine on device side if a subsequent GET DATA (Next) command
  * is needed.
- *
- * @author
- *
  */
 public class Response_ALL_AR_DO extends BerTlv {
 

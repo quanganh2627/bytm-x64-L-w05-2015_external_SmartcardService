@@ -93,14 +93,16 @@ public interface IChannel {
     ISmartcardServiceCallback getCallback();
 
     /**
+     * true if aid during open xxx channel coud be selected.
+     * false if aid could not be or was not selected.
      * @return
      */
     boolean hasSelectedAid();
 
     /**
-     * @return
+     * set selected aid flag and aid (may be null)
      */
-    void hasSelectedAid(boolean has);
+    void hasSelectedAid(boolean has, byte[] aid);
 
     /**
      * Returns the data as received from the application select command inclusively the status word.

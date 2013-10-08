@@ -32,9 +32,6 @@ import java.io.ByteArrayOutputStream;
  * An NFC event data object defines an access rule for generating NFC events for
  * a specific terminal application. The NFC event access can be restricted by a rule based
  * on an event access is NEVER/ ALWAYS allowed policy.
- *
- * @author
- *
  */
 public class NFC_AR_DO extends BerTlv {
 

@@ -23,9 +23,6 @@ package org.simalliance.openmobileapi.service.security.arf.PKCS15;
 import java.security.AccessControlException;
 import java.util.MissingResourceException;
 
-import android.os.Build;
-import android.os.SystemProperties;
-
 import org.simalliance.openmobileapi.service.IChannel;
 import org.simalliance.openmobileapi.service.security.arf.SecureElement;
 import org.simalliance.openmobileapi.service.security.arf.SecureElementException;
@@ -36,6 +33,8 @@ import org.simalliance.openmobileapi.service.security.arf.PKCS15.EFDODF;
 import org.simalliance.openmobileapi.service.security.arf.PKCS15.EFODF;
 import org.simalliance.openmobileapi.service.security.arf.PKCS15.PKCS15Exception;
 
+import android.os.Build;
+import android.os.SystemProperties;
 import android.util.Log;
 
 /**
@@ -158,7 +157,7 @@ public class PKCS15Handler {
         if (aid==null) {
             mArfChannel = null;
 
-            // S3 uses logical channel to access filesystem directly. This is done with an empty byte array.
+            // some devices use logical channels to access filesystem directly. This is done with an empty byte array.
             // if open logical channel does not work, last fallback is using SIM_IO (AT-CRSM).
             // 2012-11-08
             if(mSimAllianceAllowed)

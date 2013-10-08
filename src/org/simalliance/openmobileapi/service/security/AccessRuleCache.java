@@ -26,6 +26,9 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+
+import org.simalliance.openmobileapi.service.SmartcardService;
+import org.simalliance.openmobileapi.service.Util;
 import org.simalliance.openmobileapi.service.security.gpac.dataobjects.AID_REF_DO;
 import org.simalliance.openmobileapi.service.security.gpac.dataobjects.AR_DO;
 import org.simalliance.openmobileapi.service.security.gpac.dataobjects.Hash_REF_DO;
@@ -35,9 +38,6 @@ import android.util.Log;
 
 
 public class AccessRuleCache {
-
-    public static final String TAG = "ACE Access Rule Cache";
-
     // Previous "RefreshTag"
     // 2012-09-25
     // the refresh tag has to be valid as long as AxxController is valid
@@ -76,7 +76,7 @@ public class AccessRuleCache {
     public void putWithMerge( REF_DO ref_do, ChannelAccess channelAccess ) {
         if( mRuleCache.containsKey(ref_do)){
             ChannelAccess ca = mRuleCache.get(ref_do);
-            Log.v(TAG, "Access Rule with " + ref_do.toString() + " already exists.");
+            Log.v(SmartcardService._TAG, "Access Rule with " + ref_do.toString() + " already exists.");
 
             // if new ac condition is more restrictive then use their settings
 
@@ -134,12 +134,9 @@ public class AccessRuleCache {
                 ca.setUseApduFilter(false);
                 ca.setApduFilter(null);
             }
-
-            Log.v(TAG, "Merged Access Rule: " + ca.toString());
-
+            Log.v(SmartcardService._TAG, "Merged Access Rule: " + ca.toString());
             return;
         }
-
         mRuleCache.put(ref_do, channelAccess);
     }
 
@@ -174,7 +171,7 @@ public class AccessRuleCache {
         // now we have to check if the given AID
         // is used together with another specific hash value (another device application)
         if( searchForRulesWithSpecificAidButOtherHash(aid_ref_do) != null ){
-            Log.v(TAG, "Conflict Resolution Case A returning access rule \'NEVER\'.");
+            Log.v(SmartcardService._TAG, "Conflict Resolution Case A returning access rule \'NEVER\'.");
             ChannelAccess ca = new ChannelAccess();
             ca.setApduAccess(ChannelAccess.ACCESS.DENIED);
             ca.setAccess(ChannelAccess.ACCESS.DENIED, "AID has a specific access rule with a different hash. (Case A)");
@@ -211,7 +208,7 @@ public class AccessRuleCache {
         // now we have to check if the all AID DO
         // is used together with another Hash
         if( this.searchForRulesWithAllAidButOtherHash() != null ){
-            Log.v(TAG, "Conflict Resolution Case C returning access rule \'NEVER\'.");
+            Log.v(SmartcardService._TAG, "Conflict Resolution Case C returning access rule \'NEVER\'.");
             ChannelAccess ca = new ChannelAccess();
             ca.setApduAccess(ChannelAccess.ACCESS.DENIED);
             ca.setAccess(ChannelAccess.ACCESS.DENIED, "An access rule with a different hash and all AIDs was found. (Case C)");
@@ -390,7 +387,7 @@ public class AccessRuleCache {
     }
 
     public void dump(PrintWriter writer, String prefix) {
-        writer.println(prefix + TAG + ":");
+        writer.println(prefix + SmartcardService._TAG + ":");
         prefix += "  ";
 
         /* Dump the refresh tag */

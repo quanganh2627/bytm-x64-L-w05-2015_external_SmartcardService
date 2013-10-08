@@ -23,9 +23,6 @@ package org.simalliance.openmobileapi.service.security.gpac.dataobjects;
  * This refresh tag is an attribute (8-byte random number) of the ARA-M which is
  * newly generated if the ARA-M detects an update of access control data
  * in the Secure Element.
- *
- * @author
- *
  */
 public class Response_RefreshTag_DO extends BerTlv {
 

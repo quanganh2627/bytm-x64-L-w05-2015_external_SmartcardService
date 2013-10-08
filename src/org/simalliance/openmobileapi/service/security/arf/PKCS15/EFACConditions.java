@@ -146,19 +146,9 @@ public class EFACConditions extends EF {
                                     DERParser derApduRule = new DERParser( derAccessRules.getTLVData());
                                     byte tagApduAccessRule = derApduRule.parseTLV();
 
-                                    if( tagApduAccessRule == (byte)0xA0 ) {
-                                        // APDU Permission
-                                        DERParser derApduPermission = new DERParser( derApduRule.getTLVData() );
-                                        byte tag = derApduPermission.parseTLV();
-                                        if( tag == (byte)0x80 ) { // permission only ?
-                                            channelAccess.setApduAccess(
-                                                    derApduPermission.getTLVData()[0] == 0x01 ? ChannelAccess.ACCESS.ALLOWED : ChannelAccess.ACCESS.DENIED);
-                                        } else {
-                                            throw new PKCS15Exception("Invalid element found!");
-                                        }
-
-                                    } else if( tagApduAccessRule == (byte)0xA1 ) {
-                                        // APDU Filter
+                                    if( tagApduAccessRule == (byte)0x80 ) { // APDU Permission  (primitive)
+                                        channelAccess.setApduAccess(derApduRule.getTLVData()[0] == 0x01 ? ChannelAccess.ACCESS.ALLOWED : ChannelAccess.ACCESS.DENIED);
+                                    } else if( tagApduAccessRule == (byte)0xA1 ) { // APDU Filter (constructed)
                                         DERParser derApduFilter = new DERParser( derApduRule.getTLVData() );
                                         byte tag = derApduFilter.parseTLV();
 
@@ -188,9 +178,8 @@ public class EFACConditions extends EF {
                                 case (byte)0xA1:
                                     DERParser derNfc = new DERParser(derAccessRules.getTLVData());
 
-                                    if( derNfc.parseTLV() == (byte)0x80 ) { // NFC Permission
-                                        channelAccess.setNFCEventAccess(
-                                                derNfc.getTLVData()[0] == (byte)0x01 ? ChannelAccess.ACCESS.ALLOWED : ChannelAccess.ACCESS.DENIED);
+                                    if( derNfc.parseTLV() == (byte)0x80 ) { // NFC Permission (primitive)
+                                        channelAccess.setNFCEventAccess(derNfc.getTLVData()[0] == (byte)0x01 ? ChannelAccess.ACCESS.ALLOWED : ChannelAccess.ACCESS.DENIED);
                                     } else {
                                         throw new PKCS15Exception("Invalid element found!");
                                     }
@@ -253,5 +242,4 @@ public class EFACConditions extends EF {
     public byte[] getData() {
         return mData;
     }
-
 }

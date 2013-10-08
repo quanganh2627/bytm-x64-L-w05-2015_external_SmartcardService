@@ -23,9 +23,6 @@ import java.util.Arrays;
  * The REF-DO contains a reference to uniquely assign
  * or identify an access rule for an SE application (with an AID reference)
  * and for a device application (with a hash reference).
- *
- * @author
- *
  */
 public class REF_DO extends BerTlv {
 

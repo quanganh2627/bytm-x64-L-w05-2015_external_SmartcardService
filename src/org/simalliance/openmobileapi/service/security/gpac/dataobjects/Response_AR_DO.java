@@ -26,9 +26,6 @@ package org.simalliance.openmobileapi.service.security.gpac.dataobjects;
  * if the Response-AR-DO is too large for the GET DATA (Specific) command.
  * The length field of the Response-AR-DO shall always contain the full length of the DOs value
  * to determine on device side if a subsequent GET DATA (Next) command is needed.
- *
- * @author
- *
  */
 public class Response_AR_DO extends BerTlv {
 

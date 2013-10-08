@@ -36,7 +36,6 @@ import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
-import java.util.List;
 
 import org.simalliance.openmobileapi.service.CardException;
 import org.simalliance.openmobileapi.service.IChannel;
@@ -61,13 +60,14 @@ public class AccessControlEnforcer {
     private boolean mUseArf = false;
 
     private AccessRuleCache mAccessRuleCache = null;
+    private boolean mRulesRead = false;
 
     private ITerminal mTerminal = null;
 
     private ChannelAccess mInitialChannelAccess = new ChannelAccess();
     private boolean mFullAccess = false;
 
-    private final String _TAG = "SmartcardService ACE";
+    protected boolean[] mNfcEventFlags = null;
 
     private final String ACCESS_CONTROL_ENFORCER = "Access Control Enforcer: ";
 
@@ -99,131 +99,125 @@ public class AccessControlEnforcer {
     public synchronized void reset() {
         // Destroy any previous Controler
         // in order to reset the ACE
-        Log.i(_TAG, "Reset the ACE for terminal:" + mTerminal.getName());
+        Log.i(SmartcardService._TAG, "Reset the ACE for terminal:" + mTerminal.getName());
         mAraController = null;
         mArfController = null;
     }
 
     public synchronized boolean initialize(boolean loadAtStartup, ISmartcardServiceCallback callback) {
-        boolean status = true;
-        String denyMsg = "";
-        readSecurityProfile();
+        try {
+            boolean status = true;
+            String denyMsg = "";
 
-        if(!mTerminal.getName().startsWith(SmartcardService._UICC_TERMINAL)) {
-            // When SE is not the UICC then it's allowed to grant full access if no
-            // rules can be retreived.
-            mFullAccess = true;
-        }
-        else if("clovertrail".equals(SystemProperties.get("ro.product.board", ""))) {
-            // Support of access control is not mandatory on Clovertrail platform
-            mFullAccess = true;
-        }
-
-        /* 1 - Let's try to use ARA */
-        if( mUseAra && mAraController == null)
-            mAraController = new AraController(this);
-
-        if( mUseAra && mAraController != null ){
-            try {
-                // initialize returns true if access rules has been changed otherwise
-                // there are no changes -> no update of intialchannelaccess necessary.
-                if(mAraController.initialize(loadAtStartup, callback)) {
-                    // allow access to set up access control for a channel
-                    mInitialChannelAccess.setApduAccess(ChannelAccess.ACCESS.ALLOWED);
-                    mInitialChannelAccess.setNFCEventAccess(ChannelAccess.ACCESS.ALLOWED);
-                    mInitialChannelAccess.setAccess(ChannelAccess.ACCESS.ALLOWED, "");
-                }
-
-                // disable other access methods
-                Log.i(_TAG, "ARA applet is used for:" + mTerminal.getName());
-                mUseArf = false;
-                mFullAccess = false;
-
-            } catch( Exception e ) {
-                // ARA cannot be used since we got an exception during initialization
-                mUseAra = false;
-                denyMsg = e.getLocalizedMessage();
-
-                if( e instanceof MissingResourceException ) {
-                    if(mTerminal.getName().startsWith(SmartcardService._UICC_TERMINAL)) {
-                        // If the SE is a UICC then a possible explanation could simply
-                        // be due to the fact that the UICC is old and doesn't
-                        // support logical channel (and is not compliant with GP spec).
-                        // in this case we should simply act as if no ARA was available
-                        Log.w(_TAG, "Got MissingResourceException: Does the UICC support logical channel?");
-                        Log.w(_TAG, "Full message: " +  e.getMessage());
-                    } else {
-                        // If the SE is not a UICC then this exception means that something
-                        // wrong has occured!
-                        throw new MissingResourceException( e.getMessage(), "", "");
-                    }
-                }
-                else if( mAraController.isNoSuchElement() ) {
-                    Log.i(_TAG, "No ARA applet found in: " + mTerminal.getName());
-                }
-                else {
-                    // ARA is available but doesn't work properly.
-                    // We are going to disable everything per security req.
-                    Log.i(_TAG, e.getLocalizedMessage() );
-                    mUseArf = false;
-                    mFullAccess = false;
-                    status = false;
-                }
-            }
-        }
-
-        /* 2 - Let's try to use ARF since ARA cannot be used */
-        if(mUseArf && !mTerminal.getName().startsWith(SmartcardService._UICC_TERMINAL)) {
-            Log.i(_TAG, "Disable ARF for terminal: " + mTerminal.getName() + " (ARF is only available for UICC)");
-            mUseArf = false; // Arf is only supproted on UICC
-        }
-
-        if( mUseArf && mArfController == null)
-            mArfController = new ArfController(this);
-
-        if( mUseArf && mArfController != null){
-            try {
-                // initialize returns true if access rules has been changed otherwise
-                // there are no changes -> no update of intialchannelaccess necessary.
-                if( mArfController.initialize(callback) == true ) {
-                    // allow access to set up access control for a channel
-                    mInitialChannelAccess.setApduAccess(ChannelAccess.ACCESS.ALLOWED);
-                    mInitialChannelAccess.setNFCEventAccess(ChannelAccess.ACCESS.ALLOWED);
-                    mInitialChannelAccess.setAccess(ChannelAccess.ACCESS.ALLOWED, "");
-                }
-
-                // disable other access methods
-                Log.i(_TAG, "ARF rules are used for:" + mTerminal.getName());
-                mFullAccess = false;
-
-            } catch( Exception e ) {
-                // ARF cannot be used since we got an exception
-                mUseArf = false;
-                status = false;
-                denyMsg = e.getLocalizedMessage();
-                Log.i(_TAG, e.getLocalizedMessage() );
-            }
-        }
-
-        /* 3 - Let's grant full access since neither ARA nor ARF can be used */
-        if(mFullAccess) {
+            // allow access to set up access control for a channel
             mInitialChannelAccess.setApduAccess(ChannelAccess.ACCESS.ALLOWED);
             mInitialChannelAccess.setNFCEventAccess(ChannelAccess.ACCESS.ALLOWED);
             mInitialChannelAccess.setAccess(ChannelAccess.ACCESS.ALLOWED, "");
 
-            Log.i(_TAG, "Full access granted for:" + mTerminal.getName());
+            readSecurityProfile();
+
+            if(!mTerminal.getName().startsWith(SmartcardService._UICC_TERMINAL)) {
+                // When SE is not the UICC then it's allowed to grant full access if no
+                // rules can be retreived.
+                mFullAccess = true;
+            }
+            else if("clovertrail".equals(SystemProperties.get("ro.product.board", ""))) {
+                // Support of access control is not mandatory on Clovertrail platform
+                mFullAccess = true;
+            }
+
+            // 1 - Let's try to use ARA
+            if( mUseAra && mAraController == null)
+                mAraController = new AraController(this);
+
+            if( mUseAra && mAraController != null ){
+                try {
+                    mAraController.initialize(loadAtStartup, callback);
+
+                    // disable other access methods
+                    Log.i(SmartcardService._TAG, "ARA applet is used for:" + mTerminal.getName());
+                    mUseArf = false;
+                    mFullAccess = false;
+
+                } catch( Exception e ) {
+                    // ARA cannot be used since we got an exception during initialization
+                    mUseAra = false;
+                    denyMsg = e.getLocalizedMessage();
+
+                    if( e instanceof MissingResourceException ) {
+                        if(mTerminal.getName().startsWith(SmartcardService._UICC_TERMINAL)) {
+                            // If the SE is a UICC then a possible explanation could simply
+                            // be due to the fact that the UICC is old and doesn't
+                            // support logical channel (and is not compliant with GP spec).
+                            // in this case we should simply act as if no ARA was available
+                            Log.w(SmartcardService._TAG, "Got MissingResourceException: Does the UICC support logical channel?");
+                            Log.w(SmartcardService._TAG, "Full message: " +  e.getMessage());
+                        } else {
+                            // If the SE is not a UICC then this exception means that something
+                            // wrong has occured!
+                            throw new MissingResourceException( e.getMessage(), "", "");
+                        }
+                    } else if( mAraController.isNoSuchElement() ) {
+                        Log.i(SmartcardService._TAG, "No ARA applet found in: " + mTerminal.getName());
+                    }  else {
+                        // ARA is available but doesn't work properly.
+                        // We are going to disable everything per security req.
+                        Log.i(SmartcardService._TAG, "AccessControlEnforcer - Problem accessing ARA, Access DENIED. " + e.getLocalizedMessage());
+
+                        // access is denied for any terminal if exception during accessing ARA has any other reason.
+                        mUseArf = false;
+                        mFullAccess = false;
+                        status = false;
+                    }
+                }
+            }
+
+            // 2 - Let's try to use ARF since ARA cannot be used
+            if(mUseArf && !mTerminal.getName().startsWith(SmartcardService._UICC_TERMINAL)) {
+                Log.i(SmartcardService._TAG, "Disable ARF for terminal: " + mTerminal.getName() + " (ARF is only available for UICC)");
+                mUseArf = false; // Arf is only supproted on UICC
+            }
+
+            if( mUseArf && mArfController == null)
+                mArfController = new ArfController(this);
+
+            if( mUseArf && mArfController != null){
+                try {
+                    mArfController.initialize(callback);
+
+                    // disable other access methods
+                    Log.i(SmartcardService._TAG, "ARF rules are used for:" + mTerminal.getName());
+                    mFullAccess = false;
+                } catch( Exception e ) {
+                    // ARF cannot be used since we got an exception
+                    mUseArf = false;
+                    status = false;
+                    denyMsg = e.getLocalizedMessage();
+                    Log.e(SmartcardService._TAG, e.getMessage() );
+                }
+            }
+
+            /* 3 - Let's grant full access since neither ARA nor ARF can be used */
+            if(mFullAccess) {
+                mInitialChannelAccess.setApduAccess(ChannelAccess.ACCESS.ALLOWED);
+                mInitialChannelAccess.setNFCEventAccess(ChannelAccess.ACCESS.ALLOWED);
+                mInitialChannelAccess.setAccess(ChannelAccess.ACCESS.ALLOWED, "");
+
+                Log.i(SmartcardService._TAG, "Full access granted for:" + mTerminal.getName());
+            }
+
+            /* 4 - Let's block everything since neither ARA, ARF or fullaccess can be used */
+            if(!mUseArf && !mUseAra && !mFullAccess) {
+                mInitialChannelAccess.setApduAccess(ChannelAccess.ACCESS.DENIED);
+                mInitialChannelAccess.setNFCEventAccess(ChannelAccess.ACCESS.DENIED);
+                mInitialChannelAccess.setAccess(ChannelAccess.ACCESS.DENIED, denyMsg);
+
+                Log.i(SmartcardService._TAG, "Deny any access to:" + mTerminal.getName());
+            }
+            mRulesRead = status;
+            return status;
+        } finally {
         }
-
-        /* 4 - Let's block everything since neither ARA, ARF or fullaccess can be used */
-        if(!mUseArf && !mUseAra && !mFullAccess) {
-            mInitialChannelAccess.setApduAccess(ChannelAccess.ACCESS.DENIED);
-            mInitialChannelAccess.setNFCEventAccess(ChannelAccess.ACCESS.DENIED);
-            mInitialChannelAccess.setAccess(ChannelAccess.ACCESS.DENIED, denyMsg);
-
-            Log.i(_TAG, "Deny any access to:" + mTerminal.getName());
-        }
-
-        return status;
     }
 
     public static Certificate decodeCertificate(byte[] certData) throws CertificateException {
@@ -259,7 +253,6 @@ public class AccessControlEnforcer {
             }
             for (ApduFilter ac : accessConditions) {
                 if (CommandApdu.compareHeaders(command, ac.getMask(), ac.getApdu())) {
-
                     return;
                 }
             }
@@ -267,38 +260,10 @@ public class AccessControlEnforcer {
             throw new AccessControlException(ACCESS_CONTROL_ENFORCER + "Access Rule does not match: " + reason);
         }
         if (ca.getApduAccess() == ChannelAccess.ACCESS.ALLOWED) {
-
             return;
         } else {
 
             throw new AccessControlException(ACCESS_CONTROL_ENFORCER + "APDU access NOT allowed" );
-        }
-    }
-
-
-    public synchronized boolean[] isNFCEventAllowed(
-            byte[] aid,
-            String[] packageNames,
-            ISmartcardServiceCallback callback)
-                    throws CardException
-    {
-        if( mUseAra && mAraController != null ){
-            return mAraController.isNFCEventAllowed(aid, packageNames, callback);
-        }
-
-        else if( mUseArf && mArfController != null ) {
-            return mArfController.isNFCEventAllowed(aid, packageNames, callback);
-        }
-
-        else {
-            // 2012-09-27
-            // if ARA is not available and terminal DOES NOT belong to a UICC -> mFullAccess is true;
-            // if ARA is not available and terminal belongs to a UICC -> mFullAccess is false (if ARF is not available);
-            boolean[] ret = new boolean[packageNames.length];
-            for( int i = 0; i < ret.length; i++ ){
-                ret[i] = this.mFullAccess;
-            }
-            return ret;
         }
     }
 
@@ -308,16 +273,15 @@ public class AccessControlEnforcer {
             ISmartcardServiceCallback callback) {
         ChannelAccess channelAccess = null;
 
-
-
         // check result of channel access during initialization procedure
         if( mInitialChannelAccess.getAccess() == ChannelAccess.ACCESS.DENIED ){
             throw new AccessControlException( ACCESS_CONTROL_ENFORCER + "access denied: " + mInitialChannelAccess.getReason() );
         }
+
         // this is the new GP Access Control Enforcer implementation
-        if( mUseAra && mAraController != null ){
+        if( mUseAra || mUseArf ) {
             try {
-                channelAccess = mAraController.setUpChannelAccess(aid, packageName, callback);
+                channelAccess = internal_setUpChannelAccess(aid, packageName, callback);
             } catch( Exception e ) {
                 if( e instanceof MissingResourceException ) {
                     throw new MissingResourceException( ACCESS_CONTROL_ENFORCER + e.getMessage(), "", "");
@@ -328,21 +292,11 @@ public class AccessControlEnforcer {
             }
         }
 
-        else if( mUseArf && mArfController != null){
-            try {
-                channelAccess = mArfController.setUpChannelAccess(aid, packageName, callback);
-            } catch( Exception e ) {
-                if( e instanceof MissingResourceException ) {
-                    throw new MissingResourceException( ACCESS_CONTROL_ENFORCER + e.getMessage(), "", "");
-                }
-                throw new AccessControlException( ACCESS_CONTROL_ENFORCER + "access denied: " + e.getMessage() );
-            }
-        }
-
         if( channelAccess == null || // precautionary check
             (channelAccess.getApduAccess() != ChannelAccess.ACCESS.ALLOWED &&
              channelAccess.isUseApduFilter() == false)) {
-            if( this.mFullAccess == true ){ // mFullAccess is set if SE has no ARA and is not a UICC.
+
+            if( this.mFullAccess == true ) {
                 // if full access is set then we reuse the initial channel access,
                 // since we got so far it allows everything with a descriptive reason.
                 channelAccess = mInitialChannelAccess;
@@ -354,6 +308,60 @@ public class AccessControlEnforcer {
         channelAccess.setPackageName(packageName);
 
         return channelAccess.clone();
+    }
+
+    private synchronized ChannelAccess internal_setUpChannelAccess(byte[] aid, String packageName,
+            ISmartcardServiceCallback callback) {
+
+        ChannelAccess channelAccess = new ChannelAccess();
+        if (packageName == null || packageName.isEmpty()) {
+            throw new AccessControlException("package names must be specified");
+        }
+        if (aid == null || aid.length == 0) {
+            throw new AccessControlException("AID must be specified");
+        }
+        if (aid.length < 5 || aid.length > 16) {
+            throw new AccessControlException("AID has an invalid length");
+        }
+
+        try {
+            // estimate SHA-1 hash value of the device application's certificate.
+            Certificate[] appCerts = getAPPCerts(packageName);
+
+            // APP certificates must be available => otherwise Exception
+            if (appCerts == null || appCerts.length == 0) {
+                throw new AccessControlException("Application certificates are invalid or do not exist.");
+            }
+
+            channelAccess = getAccessRule(aid, appCerts, callback );
+
+        } catch (Throwable exp) {
+            throw new AccessControlException(exp.getMessage());
+        }
+
+        return channelAccess;
+    }
+
+    public ChannelAccess getAccessRule( byte[] aid, Certificate[] appCerts, ISmartcardServiceCallback callback  )
+            throws AccessControlException, CardException, CertificateEncodingException {
+
+        ChannelAccess channelAccess = null;
+
+        // if read all is true get rule from cache.
+        if( mRulesRead ) {
+            // get rules from internal storage
+            channelAccess = mAccessRuleCache.findAccessRule( aid, appCerts );
+        }
+
+        // if no rule was found return an empty access rule
+        // with all access denied.
+        if( channelAccess == null ){
+            channelAccess = new ChannelAccess();
+            channelAccess.setAccess(ChannelAccess.ACCESS.DENIED, "no access rule found!" );
+            channelAccess.setApduAccess(ChannelAccess.ACCESS.DENIED);
+            channelAccess.setNFCEventAccess(ChannelAccess.ACCESS.DENIED);
+        }
+        return channelAccess;
     }
 
     /**
@@ -370,7 +378,7 @@ public class AccessControlEnforcer {
              throws CertificateException, NoSuchAlgorithmException, AccessControlException {
 
         if(packageName == null || packageName.length() == 0)
-             throw new AccessControlException("Package Name not defined");
+            throw new AccessControlException("Package Name not defined");
 
         PackageInfo foundPkgInfo;
 
@@ -381,16 +389,17 @@ public class AccessControlEnforcer {
             throw new AccessControlException("Package does not exist");
         }
 
-         if (foundPkgInfo == null) {
-                 throw new AccessControlException("Package does not exist");
-             }
+        if (foundPkgInfo == null) {
+            throw new AccessControlException("Package does not exist");
+        }
 
-         ArrayList<Certificate> appCerts = new ArrayList<Certificate>();
+        ArrayList<Certificate> appCerts = new ArrayList<Certificate>();
 
-         for (Signature signature : foundPkgInfo.signatures) {
+        for (Signature signature : foundPkgInfo.signatures) {
             appCerts.add(decodeCertificate(signature.toByteArray()));
-         }
-         return appCerts.toArray(new Certificate[appCerts.size()]);
+        }
+
+        return appCerts.toArray(new Certificate[appCerts.size()]);
     }
 
     public static byte[] getAppCertHash(Certificate appCert) throws CertificateEncodingException
@@ -416,8 +425,60 @@ public class AccessControlEnforcer {
         return md.digest(appCert.getEncoded());
     }
 
+    public synchronized boolean[] isNFCEventAllowed(
+            byte[] aid,
+            String[] packageNames,
+            ISmartcardServiceCallback callback)
+            throws CardException
+    {
+        if( mUseAra || mUseArf ){
+            return internal_isNFCEventAllowed(aid, packageNames, callback);
+        } else {
+            // 2012-09-27
+            // if ARA and ARF is not available and terminal DOES NOT belong to a UICC -> mFullAccess is true
+            // if ARA and ARF is not available and terminal belongs to a UICC -> mFullAccess is false
+            boolean[] ret = new boolean[packageNames.length];
+            for( int i = 0; i < ret.length; i++ ){
+                ret[i] = this.mFullAccess;
+            }
+            return ret;
+        }
+    }
+
+    private synchronized boolean[] internal_isNFCEventAllowed(byte[] aid,
+            String[] packageNames,
+            ISmartcardServiceCallback callback)
+            throws CardException
+    {
+        // the NFC Event Flags boolean array is created and filled in internal_enableAccessConditions.
+        mNfcEventFlags = new boolean[packageNames.length];
+        int i=0;
+        ChannelAccess channelAccess = null;
+        for( String packageName : packageNames ) {
+            // estimate SHA-1 hash value of the device application's certificate.
+            Certificate[] appCerts;
+            try {
+                appCerts = getAPPCerts(packageName);
+
+                // APP certificates must be available => otherwise Exception
+                if (appCerts == null || appCerts.length == 0) {
+                    throw new AccessControlException("Application certificates are invalid or do not exist.");
+                }
+
+                channelAccess = getAccessRule(aid, appCerts, callback);
+                mNfcEventFlags[i] = (channelAccess.getNFCEventAccess() == ChannelAccess.ACCESS.ALLOWED);
+
+            } catch (Exception e) {
+                Log.w(SmartcardService._TAG, " Access Rules for NFC: " + e.getLocalizedMessage());
+                mNfcEventFlags[i] = false;
+            }
+            i++;
+        }
+        return mNfcEventFlags;
+    }
+
     public void dump(PrintWriter writer, String prefix) {
-       writer.println(prefix + _TAG + ":");
+       writer.println(prefix + SmartcardService._TAG + ":");
        prefix += "  ";
 
        writer.println(prefix + "mUseArf: " + mUseArf);
@@ -443,6 +504,6 @@ public class AccessControlEnforcer {
             if(level.contains("useara")) mUseAra = true; else mUseAra = false;
             if(level.contains("fullaccess")) mFullAccess = true; else mFullAccess = false;
         }
-        Log.i(_TAG, "Allowed ACE mode: ara=" + mUseAra + " arf=" + mUseArf + " fullaccess=" + mFullAccess );
+        Log.i(SmartcardService._TAG, "Allowed ACE mode: ara=" + mUseAra + " arf=" + mUseArf + " fullaccess=" + mFullAccess );
     }
 }
