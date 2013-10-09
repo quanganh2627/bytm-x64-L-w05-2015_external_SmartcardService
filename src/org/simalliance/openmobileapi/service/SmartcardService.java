@@ -667,7 +667,7 @@ public final class SmartcardService extends Service {
     /**
      * The smartcard service interface implementation.
      */
-    final class SmartcardServiceSession extends ISmartcardServiceSession.Stub {
+    public final class SmartcardServiceSession extends ISmartcardServiceSession.Stub {
 
         private final SmartcardServiceReader mReader;
         /** List of open channels in use of by this client. */

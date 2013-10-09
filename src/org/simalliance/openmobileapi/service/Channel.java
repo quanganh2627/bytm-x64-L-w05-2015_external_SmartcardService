@@ -37,7 +37,7 @@ import org.simalliance.openmobileapi.service.security.ChannelAccess;
 /**
  * Smartcard service base class for channel resources.
  */
-class Channel implements IChannel, IBinder.DeathRecipient {
+public class Channel implements IChannel, IBinder.DeathRecipient {
 
     protected final int mChannelNumber;
 

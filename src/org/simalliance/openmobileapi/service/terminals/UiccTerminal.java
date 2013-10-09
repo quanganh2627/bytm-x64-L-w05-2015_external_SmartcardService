@@ -21,7 +21,10 @@ package org.simalliance.openmobileapi.service.terminals;
 
 import android.content.Context;
 import org.simalliance.openmobileapi.service.CardException;
+import org.simalliance.openmobileapi.service.Channel;
 import org.simalliance.openmobileapi.service.SmartcardService;
+import org.simalliance.openmobileapi.service.SmartcardService.SmartcardServiceSession;
+import org.simalliance.openmobileapi.service.ISmartcardServiceCallback;
 import org.simalliance.openmobileapi.service.Terminal;
 import org.simalliance.openmobileapi.service.Util;
 import org.simalliance.openmobileapi.service.security.arf.SecureElementException;
@@ -174,6 +177,17 @@ public class UiccTerminal extends Terminal {
             throw new Exception("SIM IO access error");
     }}
 
+    /**
+     * openBasicChannel
+     *
+     * On UICC terminal we should prevent user from selecting a different applet on the basic channel
+     * as it may conflict with the modem (which may use basic channel to exchange data with the
+     * NAA application
+     */
+    @Override
+    public Channel openBasicChannel(SmartcardServiceSession session, byte[] aid, ISmartcardServiceCallback callback) throws Exception {
+        throw new CardException("SIM: Selecting an applet on basic channel is forbidden");
+    }
 
     /**
      * Extracts the channel number from a CLA byte. Specified in GlobalPlatform
