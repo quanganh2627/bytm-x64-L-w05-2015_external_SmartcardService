@@ -75,6 +75,9 @@ public class EFACConditions extends EF {
 
         // empty condition file
         if (DER.isEndofBuffer()) {
+            channelAccess.setAccess(ChannelAccess.ACCESS.DENIED, "empty ACCF file");
+            channelAccess.setApduAccess(ChannelAccess.ACCESS.DENIED);
+            channelAccess.setNFCEventAccess(ChannelAccess.ACCESS.DENIED);
             mSEHandle.putAccessRule(mAid_Ref_Do, hash_ref_do, channelAccess);
             return;
         }
