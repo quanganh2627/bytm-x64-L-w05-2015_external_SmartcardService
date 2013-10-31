@@ -242,7 +242,10 @@ public class PKCS15Handler {
                 // this indicates that no channel is left for accessing the SE element
                 throw (MissingResourceException)e;
             }
-            Log.e(TAG,mSELabel+" rules not correctly initialized! " + e.getLocalizedMessage());
+            Log.e(TAG, mSELabel + " rules not correctly initialized! " + e.getLocalizedMessage());
+
+            mSEHandle.resetAccessRules();
+
             throw new AccessControlException(e.getLocalizedMessage());
         } finally {
             // Close previously opened channel

@@ -51,7 +51,7 @@ public class EFACRules extends EF {
      * @param buffer ASN.1 data
      */
     private void decodeDER(byte[] buffer)
-        throws PKCS15Exception
+        throws PKCS15Exception, SecureElementException
     {
         byte[] AID=null;
         DERParser DER=new DERParser(buffer);

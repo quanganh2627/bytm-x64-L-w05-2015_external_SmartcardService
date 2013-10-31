@@ -29,6 +29,7 @@ import org.simalliance.openmobileapi.service.security.ChannelAccess;
 import org.simalliance.openmobileapi.service.security.arf.ASN1;
 import org.simalliance.openmobileapi.service.security.arf.DERParser;
 import org.simalliance.openmobileapi.service.security.arf.SecureElement;
+import org.simalliance.openmobileapi.service.security.arf.SecureElementException;
 import org.simalliance.openmobileapi.service.Util;
 import org.simalliance.openmobileapi.service.security.arf.PKCS15.PKCS15Exception;
 import org.simalliance.openmobileapi.service.security.gpac.dataobjects.AID_REF_DO;
@@ -213,18 +214,14 @@ public class EFACConditions extends EF {
      * Stores a restricted list of certificate hashes
      * @param path Path of the "EF_ACConditions" file
      */
-    public void addRestrictedHashes(byte[] path) {
-        try {
-            Log.v(TAG,"Reading and analysing EF_ACConditions...");
-            if (selectFile(path) == APDU_SUCCESS) {
-                mData = readBinary(0,Util.END);
-                decodeDER(mData);
-            } else {
-                Log.e(TAG,"EF_ACConditions not found!");
-            }
-        } catch (Exception e) {
-            /*Nothing to do*/
-            Log.e( TAG, "Exception: " + e.getMessage());
+    public void addRestrictedHashes(byte[] path)
+            throws PKCS15Exception, SecureElementException {
+        Log.v(TAG,"Reading and analysing EF_ACConditions...");
+        if (selectFile(path) == APDU_SUCCESS) {
+            mData = readBinary(0,Util.END);
+            decodeDER(mData);
+        } else {
+            Log.e(TAG,"EF_ACConditions not found!");
         }
     }
 
@@ -232,18 +229,14 @@ public class EFACConditions extends EF {
      * Stores a restricted list of certificate hashes
      * @param path Path of the "EF_ACConditions" file
      */
-    public void addRestrictedHashesFromData(byte[] data) {
-        try {
-            Log.v(TAG,"Analysing cached EF_ACConditions data...");
-            if( data != null ) {
-                mData = data;
-                decodeDER(mData);
-            } else {
-                Log.e(TAG,"EF_ACConditions data not available!");
-            }
-        } catch (Exception e) {
-            /*Nothing to do*/
-            Log.e( TAG, "Exception: " + e.getMessage());
+    public void addRestrictedHashesFromData(byte[] data)
+            throws PKCS15Exception {
+        Log.v(TAG,"Analysing cached EF_ACConditions data...");
+        if( data != null ) {
+            mData = data;
+            decodeDER(mData);
+        } else {
+            Log.e(TAG,"EF_ACConditions data not available!");
         }
     }
 
