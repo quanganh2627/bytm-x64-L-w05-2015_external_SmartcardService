@@ -118,79 +118,87 @@ public class EFACConditions extends EF {
             channelAccess.setNFCEventAccess(ChannelAccess.ACCESS.ALLOWED);
             channelAccess.setUseApduFilter(false);
 
-            if ( DER.parseTLV(ASN1.TAG_Sequence) > 0 ) {
+            if (DER.parseTLV(ASN1.TAG_Sequence) > 0 ) {
                 DERParser derRule = new DERParser( DER.getTLVData());
-                derRule.parseTLV(ASN1.TAG_OctetString);
-                certificateHash=derRule.getTLVData();
 
-                if (certificateHash.length!=Hash_REF_DO._SHA1_LEN &&
-                        certificateHash.length!=0) {
-                    // other hash than SHA-1 hash values are not supported.
-                    throw new PKCS15Exception("Invalid hash found!");
-                } else {
-                    hash_ref_do =new Hash_REF_DO(certificateHash);
+                byte tagRule = derRule.parseTLV();
+
+                if (tagRule == ASN1.TAG_OctetString) { // Certificate HASH (optional)
+                    certificateHash = derRule.getTLVData();
+
+                    if (certificateHash.length!=Hash_REF_DO._SHA1_LEN &&
+                            certificateHash.length!=0) {
+                        // other hash than SHA-1 hash values are not supported.
+                        throw new PKCS15Exception("Invalid hash found!");
+                    } else {
+                        hash_ref_do =new Hash_REF_DO(certificateHash);
+                    }
+
+                    // Parse the next token
+                    if(!derRule.isEndofBuffer()) tagRule = derRule.parseTLV();
                 }
 
-                // 2012-04-16
-                // parse optional Access Rule.
-                if( !derRule.isEndofBuffer() ) {
+                if (tagRule == (byte)0xA0) {
+                    DERParser derAccessRules = new DERParser(derRule.getTLVData());
 
-                    if( derRule.parseTLV() == (byte)0xA0 ) {
+                    while (!derAccessRules.isEndofBuffer()) {
+                        switch (derAccessRules.parseTLV()) {
+                            // APDU Access Rule
+                            case (byte)0xA0:
+                                DERParser derApduRule = new DERParser( derAccessRules.getTLVData());
+                                byte tagApduAccessRule = derApduRule.parseTLV();
 
-                        DERParser derAccessRules = new DERParser(derRule.getTLVData());
+                                if (tagApduAccessRule == (byte)0x80) { // APDU Permission  (primitive)
+                                    channelAccess.setApduAccess(derApduRule.getTLVData()[0] == 0x01 ?
+                                            ChannelAccess.ACCESS.ALLOWED : ChannelAccess.ACCESS.DENIED);
+                                }
+                                else if (tagApduAccessRule == (byte)0xA0) { // APDU Permission (just to be lenient)
+                                    DERParser derApduPermission = new DERParser(derApduRule.getTLVData());
+                                    derApduPermission.parseTLV((byte)0x80);
+                                    channelAccess.setApduAccess(derApduPermission.getTLVData()[0] == 0x01 ?
+                                            ChannelAccess.ACCESS.ALLOWED : ChannelAccess.ACCESS.DENIED);
+                                }
+                                else if (tagApduAccessRule == (byte)0xA1) { // APDU Filter (constructed)
+                                    DERParser derApduFilter = new DERParser( derApduRule.getTLVData() );
+                                    byte tag = derApduFilter.parseTLV();
 
-                        while(!derAccessRules.isEndofBuffer()) {
-                            switch( derAccessRules.parseTLV() ){
-                                // APDU Access Rule
-                                case (byte)0xA0:
-                                    DERParser derApduRule = new DERParser( derAccessRules.getTLVData());
-                                    byte tagApduAccessRule = derApduRule.parseTLV();
+                                    if (tag == ASN1.TAG_OctetString) {
 
-                                    if( tagApduAccessRule == (byte)0x80 ) { // APDU Permission  (primitive)
-                                        channelAccess.setApduAccess(derApduRule.getTLVData()[0] == 0x01 ? ChannelAccess.ACCESS.ALLOWED : ChannelAccess.ACCESS.DENIED);
-                                    } else if( tagApduAccessRule == (byte)0xA1 ) { // APDU Filter (constructed)
-                                        DERParser derApduFilter = new DERParser( derApduRule.getTLVData() );
-                                        byte tag = derApduFilter.parseTLV();
+                                        Vector<ApduFilter> apduFilter = new Vector<ApduFilter>();
 
-                                        if( tag == ASN1.TAG_OctetString ) {
+                                        // collect all apdu filter tlvs.
+                                        apduFilter.add(new ApduFilter( derApduFilter.getTLVData()));
 
-                                            Vector<ApduFilter> apduFilter = new Vector<ApduFilter>();
-
-                                            // collect all apdu filter tlvs.
-                                            apduFilter.add(new ApduFilter( derApduFilter.getTLVData()));
-
-                                            while( !derApduFilter.isEndofBuffer()) {
-                                                if( derApduFilter.parseTLV() == ASN1.TAG_OctetString ) {
-                                                    apduFilter.add(new ApduFilter( derApduFilter.getTLVData()));
-                                                }
+                                        while (!derApduFilter.isEndofBuffer()) {
+                                            if (derApduFilter.parseTLV() == ASN1.TAG_OctetString) {
+                                                apduFilter.add(new ApduFilter( derApduFilter.getTLVData()));
                                             }
-                                            channelAccess.setUseApduFilter(true);
-                                            channelAccess.setApduFilter(apduFilter.toArray(new ApduFilter[apduFilter.size()]));
-                                        } else {
-                                            throw new PKCS15Exception("Invalid element found!");
                                         }
-
+                                        channelAccess.setUseApduFilter(true);
+                                        channelAccess.setApduFilter(apduFilter.toArray(new ApduFilter[apduFilter.size()]));
                                     } else {
                                         throw new PKCS15Exception("Invalid element found!");
                                     }
-                                break;
-                                // NFC Access Rule
-                                case (byte)0xA1:
-                                    DERParser derNfc = new DERParser(derAccessRules.getTLVData());
 
-                                    if( derNfc.parseTLV() == (byte)0x80 ) { // NFC Permission (primitive)
-                                        channelAccess.setNFCEventAccess(derNfc.getTLVData()[0] == (byte)0x01 ? ChannelAccess.ACCESS.ALLOWED : ChannelAccess.ACCESS.DENIED);
-                                    } else {
-                                        throw new PKCS15Exception("Invalid element found!");
-                                    }
-                                    break;
-                                default:
+                                } else {
                                     throw new PKCS15Exception("Invalid element found!");
-                            }
+                                }
+                            break;
+                            // NFC Access Rule
+                            case (byte)0xA1:
+                                DERParser derNfc = new DERParser(derAccessRules.getTLVData());
+
+                                if (derNfc.parseTLV() == (byte)0x80) { // NFC Permission (primitive)
+                                    channelAccess.setNFCEventAccess(derNfc.getTLVData()[0] == (byte)0x01 ?
+                                            ChannelAccess.ACCESS.ALLOWED : ChannelAccess.ACCESS.DENIED);
+                                } else {
+                                    throw new PKCS15Exception("Invalid element found!");
+                                }
+                                break;
+                            default:
+                                throw new PKCS15Exception("Invalid element found!");
                         }
-                    } else {
-                        // no explicit access rule given.
-                    }
+                    } // parse next AccessRule
                 }
             } else {
                 // coding 30 00 -> empty hash value given (all applications)
