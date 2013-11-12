@@ -398,6 +398,8 @@ public final class SmartcardService extends Service {
         unregisterAdapterStateChangedEvent(getApplicationContext());
         unregisterMediaMountedEvent(getApplicationContext());
 
+        // Stop the looper and async task
+        mServiceHandler.getLooper().quit();
         mServiceHandler = null;
 
         Log.v(_TAG, Thread.currentThread().getName()
@@ -933,9 +935,9 @@ public final class SmartcardService extends Service {
         }
 
         public void sendMessage(int what, int nbTries) {
-           mServiceHandler.removeMessages(what);
-           Message newMsg = mServiceHandler.obtainMessage(what, nbTries, 0);
-           mServiceHandler.sendMessage(newMsg);
+           removeMessages(what);
+           Message newMsg = obtainMessage(what, nbTries, 0);
+           sendMessage(newMsg);
         }
 
         @Override
@@ -973,8 +975,8 @@ public final class SmartcardService extends Service {
            if(!result && msg.arg1 > 0) {
                // Try to re-post the message
                Log.e(_TAG, "Fail to load rules: Let's try another time (" + msg.arg1 + " remaining attempt");
-               Message newMsg = mServiceHandler.obtainMessage(msg.what, msg.arg1 - 1, 0);
-               mServiceHandler.sendMessageDelayed(newMsg, WAIT_TIME);
+               Message newMsg = obtainMessage(msg.what, msg.arg1 - 1, 0);
+               sendMessageDelayed(newMsg, WAIT_TIME);
            }
         }
     }
