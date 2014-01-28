@@ -42,6 +42,8 @@ import java.util.NoSuchElementException;
 
 public class UiccTerminal extends Terminal {
 
+    final static private String TAG = "UiccTerminal";
+
     private ITelephony manager = null;
 
     private int[] channelId = new int[20];
@@ -52,9 +54,9 @@ public class UiccTerminal extends Terminal {
         super(SmartcardService._UICC_TERMINAL + " - UICC", context);
 
         try {
-            manager = ITelephony.Stub.asInterface(ServiceManager
-                    .getService(Context.TELEPHONY_SERVICE));
-        } catch (Exception ex) {
+            connectToTelephonyManager();
+        } catch(CardException e) {
+            Log.e(TAG, "connectToTelephonyManager(): " + e);
         }
 
         for (int i = 0; i < channelId.length; i++)
@@ -72,9 +74,7 @@ public class UiccTerminal extends Terminal {
 
     @Override
     protected void internalConnect() throws CardException {
-        if (manager == null) {
-            throw new CardException("Cannot connect to Telephony Service");
-        }
+        connectToTelephonyManager();
         mIsConnected = true;
     }
 
@@ -289,5 +289,18 @@ public class UiccTerminal extends Terminal {
             throw new CardException("close channel failed");
         }
         channelId[channelNumber] = 0;
+    }
+
+    private void connectToTelephonyManager() throws CardException {
+        if(manager == null) {
+            try {
+                manager = ITelephony.Stub.asInterface(ServiceManager
+                        .getService(Context.TELEPHONY_SERVICE));
+            } catch (Exception ex) {
+                throw new CardException("Cannot retreive Telephony service: " + ex);
+            }
+        }
+
+        if (manager == null) throw new CardException("Cannot connect to Telephony service");
     }
 }
