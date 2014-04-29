@@ -224,7 +224,9 @@ public class EFACConditions extends EF {
             mData = readBinary(0,Util.END);
             decodeDER(mData);
         } else {
+            // decode an emty buffer (as if the ACCF file was empty)
             Log.e(TAG,"EF_ACConditions not found!");
+            decodeDER(null);
         }
     }
 
@@ -239,7 +241,11 @@ public class EFACConditions extends EF {
             mData = data;
             decodeDER(mData);
         } else {
+            // decode an emty buffer (as if the ACCF file was empty)
+            // Normally this function is never call when data is empty
+            // but in case the implementation change we need to be secured
             Log.e(TAG,"EF_ACConditions data not available!");
+            decodeDER(null);
         }
     }
 
