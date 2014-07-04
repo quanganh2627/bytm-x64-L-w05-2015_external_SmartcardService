@@ -230,17 +230,12 @@ public final class SmartcardService extends Service {
         mSimReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                if("android.intent.action.SIM_STATE_CHANGED".equals(intent.getAction())) {
+                if ("android.intent.action.SIM_STATE_CHANGED".equals(intent.getAction())) {
                     final Bundle  extras    = intent.getExtras();
-                    final boolean simReady  = (extras != null) && "READY".equals(extras.getString("ss"));
                     final boolean simLoaded = (extras != null) && "LOADED".equals(extras.getString("ss"));
-                    if( simReady ){
-                        Log.i(_TAG, "SIM is ready. Checking access rules for updates.");
-                        mServiceHandler.sendMessage(MSG_LOAD_UICC_RULES, 5);
-                    }
-                    else if( simLoaded){
+                    if (simLoaded){
                         Log.i(_TAG, "SIM is loaded. Checking access rules for updates.");
-                        mServiceHandler.sendMessage(MSG_LOAD_UICC_RULES, 5);
+                        mServiceHandler.sendMessage(MSG_LOAD_UICC_RULES, NUMBER_OF_TRIALS);
                     }
                 }
             }
@@ -268,7 +263,7 @@ public final class SmartcardService extends Service {
                 final boolean nfcAdapterOn = nfcAdapterAction && intent.getIntExtra("android.nfc.extra.ADAPTER_STATE", 1) == 3; // is NFC Adapter turned on ?
                 if( nfcAdapterOn){
                     Log.i(_TAG, "NFC Adapter is ON. Checking access rules for updates.");
-                    mServiceHandler.sendMessage(MSG_LOAD_ESE_RULES, 5);
+                    mServiceHandler.sendMessage(MSG_LOAD_ESE_RULES, NUMBER_OF_TRIALS);
                 }
             }
         };
@@ -293,7 +288,7 @@ public final class SmartcardService extends Service {
                 final boolean mediaMounted = intent.getAction().equals("android.intent.action.MEDIA_MOUNTED");
                 if( mediaMounted){
                     Log.i(_TAG, "New Media is mounted. Checking access rules for updates.");
-                    mServiceHandler.sendMessage(MSG_LOAD_SD_RULES, 5);
+                    mServiceHandler.sendMessage(MSG_LOAD_SD_RULES, NUMBER_OF_TRIALS);
                 }
             }
         };
@@ -924,8 +919,8 @@ public final class SmartcardService extends Service {
     public final static int MSG_LOAD_ESE_RULES   = 2;
     public final static int MSG_LOAD_SD_RULES    = 3;
 
-    public final static int NUMBER_OF_TRIALS      = 3;
-    public final static long WAIT_TIME            = 1000;
+    public final static int  NUMBER_OF_TRIALS     = 3;
+    public final static long WAIT_TIME            = 20000;
 
     private final class ServiceHandler extends Handler {
 
@@ -944,9 +939,9 @@ public final class SmartcardService extends Service {
         public void handleMessage(Message msg) {
            boolean result = true;
 
-           Log.i(_TAG, "Handle msg: what=" + msg.what + " nbTries=" + msg.arg1);
+           Log.i(_TAG, "Handle msg: what=" + msg.what + " attempt:" + msg.arg2 + " remaining attempt(s):" + msg.arg1);
 
-           switch(msg.what) {
+           switch (msg.what) {
            case MSG_LOAD_UICC_RULES:
                try {
                    result = initializeAccessControl(true,  _UICC_TERMINAL, null );
@@ -972,10 +967,20 @@ public final class SmartcardService extends Service {
                break;
            }
 
-           if(!result && msg.arg1 > 0) {
+           if (msg.arg2 == 0) {
+               // If this is the first attempt then remove any other identical message.
+               // Indeed it could happen that a message is added when there is already
+               // an identical message under execution. In this case our sendMessage()
+               // method is not able to remove the running message and this latter may post
+               // an other delayed attempt. So let's now remove any potential following trial
+               // it may have posted.
+               removeMessages(msg.what);
+           }
+
+           if (!result && msg.arg1 > 0) {
                // Try to re-post the message
-               Log.e(_TAG, "Fail to load rules: Let's try another time (" + msg.arg1 + " remaining attempt");
-               Message newMsg = obtainMessage(msg.what, msg.arg1 - 1, 0);
+               Log.e(_TAG, "Fail to load rules: Let's try another time (" + msg.arg1 + " remaining attempts)");
+               Message newMsg = obtainMessage(msg.what, msg.arg1 - 1, msg.arg2 + 1);
                sendMessageDelayed(newMsg, WAIT_TIME);
            }
         }
