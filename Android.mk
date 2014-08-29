@@ -8,7 +8,7 @@ LOCAL_AIDL_INCLUDES := external/SmartcardService/openmobileapi/src/org/simallian
 LOCAL_PACKAGE_NAME := SmartcardService
 LOCAL_CERTIFICATE := platform
 
-LOCAL_JAVA_LIBRARIES := core framework org.simalliance.openmobileapi
+LOCAL_JAVA_LIBRARIES :=  framework org.simalliance.openmobileapi
 
 LOCAL_PROGUARD_ENABLED := disabled
 

@@ -34,6 +34,7 @@ import android.os.ServiceManager;
 import android.os.SystemProperties;
 import android.util.Log;
 
+import android.telephony.IccOpenLogicalChannelResponse;
 import com.android.internal.telephony.ITelephony;
 import com.android.internal.telephony.TelephonyProperties;
 
@@ -138,22 +139,21 @@ public class UiccTerminal extends Terminal {
         int channelNumber = parseChannelNumber(command[0]);
 
         if (channelNumber == 0) {
-
             try {
-                String response = manager.transmitIccBasicChannel(cla, ins, p1,
-                        p2, p3, data);
+                String response = manager.iccTransmitApduBasicChannel(
+                        cla, ins, p1, p2, p3, data);
                 return StringToByteArray(response);
             } catch (Exception ex) {
                 throw new CardException("transmit command failed");
             }
-
         } else {
             if ((channelNumber > 0) && (channelId[channelNumber] == 0)) {
                 throw new CardException("channel not open");
             }
 
             try {
-                String response = manager.transmitIccLogicalChannel(cla, ins, channelId[channelNumber], p1, p2, p3, data);
+                String response = manager.iccTransmitApduLogicalChannel(
+                        channelId[channelNumber], cla, ins, p1, p2, p3, data);
                 return StringToByteArray(response);
             } catch (Exception ex) {
                 throw new CardException("transmit command failed");
@@ -192,7 +192,8 @@ public class UiccTerminal extends Terminal {
                 currentSelectedFilePath = filePath;
             }
 
-            byte[] ret = manager.transmitIccSimIO(fileID, ins, p1, p2, p3, currentSelectedFilePath);
+            byte[] ret = manager.iccExchangeSimIO(fileID, ins, p1, p2, p3,
+                    currentSelectedFilePath);
 
             return ret;
         } catch (Exception e) {
@@ -251,21 +252,24 @@ public class UiccTerminal extends Terminal {
         mSelectResponse = null;
         for (int i = 1; i < channelId.length; i++)
             if (channelId[i] == 0) {
-                channelId[i] = manager.openIccLogicalChannel(ByteArrayToString(
-                        aid, 0));
+                IccOpenLogicalChannelResponse openChannelResponse =
+                        manager.iccOpenLogicalChannel(ByteArrayToString(aid, 0));
 
-                if (!(channelId[i] > 0)) { // channelId[i] == 0
-                    channelId[i] = 0;
-                    int lastError = manager.getLastError();
+                if (openChannelResponse == null) {
+                    throw new CardException("null response");
+                }
 
-                    if (lastError == 2) {
-                        throw new MissingResourceException(
-                                "all channels are used", "", "");
-                    }
-                    if (lastError == 3) {
-                        throw new NoSuchElementException("applet not found");
-                    }
-                    throw new CardException("open channel failed");
+                int status = openChannelResponse.getStatus();
+
+                if (status == IccOpenLogicalChannelResponse.STATUS_NO_ERROR) {
+                    channelId[i] = openChannelResponse.getChannel();
+                    mSelectResponse = openChannelResponse.getSelectResponse();
+                } else if (status == IccOpenLogicalChannelResponse.STATUS_MISSING_RESOURCE) {
+                    throw new MissingResourceException("all channels are used", "", "");
+                } else if (status == IccOpenLogicalChannelResponse.STATUS_NO_SUCH_ELEMENT) {
+                    throw new NoSuchElementException("applet not found");
+                } else {
+                    throw new CardException("unknown error");
                 }
                 return i;
             }
@@ -282,7 +286,7 @@ public class UiccTerminal extends Terminal {
             throw new CardException("channel not open");
         }
         try {
-            if (manager.closeIccLogicalChannel(channelId[channelNumber]) == false) {
+            if (manager.iccCloseLogicalChannel(channelId[channelNumber]) == false) {
                 throw new CardException("close channel failed");
             }
         } catch (Exception ex) {
